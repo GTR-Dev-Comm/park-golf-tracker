@@ -91,6 +91,15 @@
   .cal-cell.empty{ cursor:default; }
   .cal-dots{ display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:4px; }
   .cal-dot{ width:6px; height:6px; border-radius:999px; }
+  .cal-chips-desktop{ display:none; }
+  @media (min-width:768px){
+    .cal-cell{ min-height:78px; padding:8px; text-align:left; }
+    .cal-cell .day-num{ text-align:left !important; font-size:12px; }
+    .cal-dots{ display:none; }
+    .cal-chips-desktop{ display:block; margin-top:4px; }
+    .cal-chip{ font-size:11px; border-radius:4px; padding:2px 5px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cal-chip-more{ font-size:10px; color:var(--c-faint); }
+  }
   .fab-today{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#fff; border:1px solid var(--c-border); border-radius:999px; padding:10px 20px; font-size:14px; font-weight:600; box-shadow:0 2px 10px rgba(0,0,0,0.08); z-index:15; }
   .fab-add{ position:fixed; right:20px; bottom:20px; width:52px; height:52px; border-radius:999px; background:var(--c-forest); color:#fff; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(0,0,0,0.18); z-index:15; }
 </style>
@@ -488,9 +497,14 @@ function renderCalendarHTML(){
     const dotsHtml = dayItems.slice(0,5).map(it=>
       `<span class="cal-dot" style="background:${catById(it.category_id).color}"></span>`
     ).join("");
+    const chipsHtml = dayItems.slice(0,3).map(it=>
+      `<div class="cal-chip" style="background:${catById(it.category_id).color}" data-action="open-item" data-id="${it.id}">${esc(it.title)}</div>`
+    ).join("");
+    const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
       <div class="text-sm day-num" style="text-align:center;font-weight:600;">${d}</div>
       <div class="cal-dots">${dotsHtml}</div>
+      <div class="cal-chips-desktop">${chipsHtml}${moreHtml}</div>
     </div>`;
   }
 
