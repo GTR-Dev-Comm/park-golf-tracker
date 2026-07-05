@@ -1044,11 +1044,33 @@ async function startApp(){
   document.getElementById("app").classList.remove("hidden");
   try{
     await loadAll();
+    startPolling();
   }catch(err){
     document.getElementById("app").innerHTML = `<div style="padding:40px;text-align:center;color:var(--c-danger);">
       데이터를 불러오지 못했습니다. SUPABASE_URL / SUPABASE_ANON_KEY 설정을 확인해주세요.<br/><span style="font-size:12px;color:var(--c-faint);">${esc(err.message)}</span>
     </div>`;
   }
+}
+
+function startPolling(){
+  setInterval(async ()=>{
+    // 입력 중인 모달이나 글 작성 중이면 건드리지 않음
+    if(document.querySelector(".modal-backdrop")) return;
+    const logDraftEl = document.getElementById("log-draft");
+    if(logDraftEl && logDraftEl.value.trim()) return;
+    try{
+      const [newCats, newItems] = await Promise.all([
+        apiGet("categories", "&order=created_at.asc"),
+        apiGet("items", "&order=updated_at.desc"),
+      ]);
+      const changed = JSON.stringify(newCats)!==JSON.stringify(categories) || JSON.stringify(newItems)!==JSON.stringify(items);
+      if(changed){
+        categories = newCats;
+        items = newItems;
+        render();
+      }
+    }catch(e){ /* 일시적인 네트워크 오류는 무시하고 다음 주기에 재시도 */ }
+  }, 5000);
 }
 
 if(sessionStorage.getItem("ptk_authed")==="1"){ startApp(); }
