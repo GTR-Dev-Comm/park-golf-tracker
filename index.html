@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>진행기록</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --c-page:#FFFFFF; --c-ink:#0B0F0C; --c-forest:#2F5233; --c-forest-dark:#264229;
+    --c-gold:#C9A227; --c-danger:#8A2E30; --c-muted:#2E3B44; --c-faint:#5C5850;
+    --c-border:#E3DFD3; --c-border-soft:#D3CEC0; --c-sheet:#FFFFFF; --c-done:#3F5F3F;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:'Inter', system-ui, sans-serif; font-weight:500; background:var(--c-page); color:var(--c-ink); }
+  .font-display{ font-family:'Fraunces', serif; }
+  .font-mono{ font-family:'IBM Plex Mono', monospace; }
+  button{ font-family:inherit; cursor:pointer; border:none; background:none; }
+  input, textarea{ font-family:inherit; }
+  .hidden{ display:none !important; }
+
+  /* layout helpers */
+  .flex{ display:flex; } .flex-col{ flex-direction:column; } .items-center{ align-items:center; }
+  .justify-between{ justify-content:space-between; } .justify-center{ justify-content:center; }
+  .gap-1{ gap:4px; } .gap-2{ gap:8px; } .gap-3{ gap:12px; } .gap-1_5{ gap:6px; }
+  .flex-1{ flex:1; } .flex-wrap{ flex-wrap:wrap; } .shrink-0{ flex-shrink:0; } .min-w-0{ min-width:0; }
+  .w-full{ width:100%; } .mx-auto{ margin-left:auto; margin-right:auto; }
+  .max-w{ max-width:720px; }
+  .rounded{ border-radius:6px; } .rounded-lg{ border-radius:10px; } .rounded-xl{ border-radius:14px; } .rounded-full{ border-radius:999px; }
+  .border{ border:1px solid var(--c-border); } .border-b{ border-bottom:1px solid var(--c-border); } .border-t{ border-top:1px solid var(--c-border); }
+  .p-3{ padding:12px; } .p-4{ padding:16px; } .p-5{ padding:20px; }
+  .px-3{ padding-left:12px; padding-right:12px; } .px-4{ padding-left:16px; padding-right:16px; }
+  .py-1{ padding-top:4px; padding-bottom:4px; } .py-1_5{ padding-top:6px; padding-bottom:6px; }
+  .py-2{ padding-top:8px; padding-bottom:8px; } .py-3{ padding-top:12px; padding-bottom:12px; }
+  .mt-1{ margin-top:4px; } .mt-2{ margin-top:8px; } .mt-3{ margin-top:12px; } .mb-1{ margin-bottom:4px; }
+  .mb-2{ margin-bottom:8px; } .mb-3{ margin-bottom:12px; } .mb-4{ margin-bottom:16px; }
+  .text-xs{ font-size:12px; } .text-sm{ font-size:14px; } .text-base{ font-size:16px; } .text-lg{ font-size:18px; } .text-xl{ font-size:20px; }
+  .text-11{ font-size:11px; } .text-10{ font-size:10px; }
+  .font-medium{ font-weight:600; } .font-semibold{ font-weight:700; }
+  .truncate{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .text-ink{ color:var(--c-ink); } .text-muted{ color:var(--c-muted); } .text-faint{ color:var(--c-faint); }
+  .text-danger{ color:var(--c-danger); } .text-done{ color:var(--c-done); } .text-white{ color:#fff; }
+  .bg-page{ background:var(--c-page); } .bg-white{ background:#fff; } .bg-forest{ background:var(--c-forest); }
+  .bg-ink{ background:var(--c-ink); } .bg-danger-soft{ background:rgba(138,46,48,0.1); }
+  .cursor-pointer{ cursor:pointer; }
+  .overflow-y-auto{ overflow-y:auto; }
+  .relative{ position:relative; } .fixed{ position:fixed; } .inset-0{ top:0; right:0; bottom:0; left:0; }
+  .sticky{ position:sticky; top:0; } .z-10{ z-index:10; } .z-20{ z-index:20; } .z-30{ z-index:30; }
+
+  .btn-forest{ background:var(--c-forest); color:#fff; padding:10px 14px; border-radius:10px; font-weight:600; font-size:14px; }
+  .btn-forest:hover{ background:var(--c-forest-dark); }
+  .btn-forest:disabled{ opacity:.4; cursor:default; }
+  .btn-soft{ border:1px solid var(--c-border); border-radius:10px; padding:8px 12px; font-size:13px; color:var(--c-muted); }
+  .chip{ padding:6px 12px; border-radius:999px; font-size:13px; font-weight:600; border:1px solid var(--c-border); background:#fff; white-space:nowrap; }
+  .chip.active{ background:var(--c-ink); color:#fff; border-color:var(--c-ink); }
+  .input{ width:100%; border:1px solid var(--c-border); border-radius:10px; padding:9px 12px; font-size:14px; color:var(--c-ink); background:#fff; }
+  .input:focus{ outline:none; border-color:var(--c-gold); }
+  .label{ display:block; font-size:12px; font-weight:600; color:var(--c-muted); margin-bottom:6px; }
+
+  #password-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  #password-box{ width:100%; max-width:320px; text-align:center; }
+  #app{ min-height:100vh; }
+
+  header.topbar{ position:sticky; top:0; z-index:20; background:rgba(255,255,255,0.95); backdrop-filter:blur(6px); border-bottom:1px solid var(--c-border); }
+  .chip-row{ display:flex; gap:8px; overflow-x:auto; padding:0 16px 12px 16px; }
+  .chip-row::-webkit-scrollbar{ display:none; }
+
+  .item-row{ background:#fff; border:1px solid var(--c-border); border-radius:14px; padding:12px 16px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+  .avatar{ width:20px; height:20px; border-radius:999px; background:#fff; border:1px solid var(--c-border); display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; }
+
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.3); display:flex; align-items:flex-end; justify-content:center; z-index:40; }
+  @media (min-width:640px){ .modal-backdrop{ align-items:center; } }
+  .modal-panel{ background:#fff; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; border-radius:16px 16px 0 0; padding:20px; }
+  @media (min-width:640px){ .modal-panel{ border-radius:16px; } }
+
+  .cal-grid{ border:1px solid var(--c-border); border-radius:14px; overflow:hidden; }
+  .cal-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--c-border); }
+  .cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:11px; color:var(--c-faint); padding:6px 0; border-bottom:1px solid var(--c-border); }
+  .cal-body{ display:grid; grid-template-columns:repeat(7,1fr); }
+  .cal-cell{ min-height:70px; border-bottom:1px solid var(--c-border); border-right:1px solid var(--c-border); padding:6px; cursor:pointer; }
+  .cal-cell.today{ box-shadow: inset 0 0 0 1.5px var(--c-gold); }
+  .cal-cell.empty{ cursor:default; }
+  .cal-chip{ font-size:10px; border-radius:4px; padding:2px 4px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+</style>
+</head>
+<body>
+
+<div id="password-screen">
+  <div id="password-box">
+    <h1 class="font-display text-lg font-semibold mb-3">진행기록</h1>
+    <p class="text-sm text-muted mb-3">비밀번호를 입력하세요</p>
+    <input id="password-input" type="password" class="input mb-2" autocomplete="off" />
+    <p id="password-error" class="text-xs text-danger mb-2 hidden">비밀번호가 올바르지 않습니다</p>
+    <button id="password-submit" class="btn-forest w-full">입장</button>
+  </div>
+</div>
+
+<div id="app" class="hidden"></div>
+
+<script>
+/* ==================== 설정 (배포 전 여기만 수정) ==================== */
+const SUPABASE_URL = "https://hypqqmdieswabqiensed.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cHFxbWRpZXN3YWJxaWVuc2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTUzNTYsImV4cCI6MjA5ODgzMTM1Nn0.DPLUAn4pLGEVE035v4pFg9rLo9d9sFYf4MvVEm5vhuA";
+const APP_PASSWORD = "mcjjang8560";
+/* ================================================================== */
+/* 참고: 이 비밀번호는 화면 진입만 막는 간단한 잠금이고, 페이지 소스에 그대로 노출됩니다.
+   1~2명만 아는 배포 링크 + 이 비밀번호 조합으로 충분한 용도(진짜 보안이 필요하면 서버 인증이 별도로 필요) */
+
+const REST = `${SUPABASE_URL}/rest/v1`;
+const HEADERS = {
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  "Content-Type": "application/json",
+};
+
+const CAT_SCHEDULE = "cat-schedule";
+const CAT_TODO = "cat-todo";
+const CAT_MEETING = "cat-sales";
+const CAT_PROGRESS = "cat-progress";
+const WEEKDAYS = ["일","월","화","수","목","금","토"];
+const PALETTE = ["#2F5233","#C9A227","#8A4B2E","#4A5B6A","#6B4E71","#3D6B5C","#A63D40"];
+
+let categories = [];
+let items = [];
+let activeCat = "all";
+let viewMode = "calendar";
+let monthCursor = new Date();
+let selectedDate = null;
+let selectedItemId = null;
+
+/* ---------- utils ---------- */
+function uid(p){ return `${p}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function toISODate(d){ const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; }
+function fmtDate(d){ if(!d) return ""; return new Date(d).toLocaleDateString("ko-KR",{month:"short",day:"numeric",weekday:"short"}); }
+function fmtDateTime(d){ return new Date(d).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+function daysUntil(d){ if(!d) return null; const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d); x.setHours(0,0,0,0); return Math.round((x-t)/86400000); }
+function whenLabel(item){ if(!item.date) return ""; return item.all_day===false && item.time ? `${fmtDate(item.date)} · ${item.time}` : fmtDate(item.date); }
+function catById(id){ return categories.find(c=>c.id===id) || {name:"미분류", color:"#999"}; }
+function esc(s){ return (s||"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+
+/* ---------- Supabase REST ---------- */
+async function apiGet(table, query=""){
+  const r = await fetch(`${REST}/${table}?select=*${query}`, { headers: HEADERS });
+  if(!r.ok) throw new Error(`GET ${table} failed`);
+  return r.json();
+}
+async function apiInsert(table, row){
+  const r = await fetch(`${REST}/${table}`, { method:"POST", headers:{...HEADERS, Prefer:"return=representation"}, body: JSON.stringify(row) });
+  if(!r.ok) throw new Error(`INSERT ${table} failed`);
+  return (await r.json())[0];
+}
+async function apiUpdate(table, id, patch){
+  const r = await fetch(`${REST}/${table}?id=eq.${encodeURIComponent(id)}`, { method:"PATCH", headers:{...HEADERS, Prefer:"return=representation"}, body: JSON.stringify(patch) });
+  if(!r.ok) throw new Error(`UPDATE ${table} failed`);
+  return (await r.json())[0];
+}
+async function apiDelete(table, id){
+  const r = await fetch(`${REST}/${table}?id=eq.${encodeURIComponent(id)}`, { method:"DELETE", headers: HEADERS });
+  if(!r.ok) throw new Error(`DELETE ${table} failed`);
+}
+
+async function loadAll(){
+  [categories, items] = await Promise.all([
+    apiGet("categories", "&order=created_at.asc"),
+    apiGet("items", "&order=updated_at.desc"),
+  ]);
+  render();
+}
+
+/* ---------- mutations ---------- */
+async function createItem(payload){
+  const now = new Date().toISOString();
+  const row = {
+    id: uid("item"),
+    category_id: payload.categoryId,
+    title: payload.title,
+    status: "진행중",
+    assignees: payload.assignees || [],
+    date: payload.date || null,
+    all_day: payload.allDay,
+    time: payload.allDay ? "" : payload.time,
+    location: payload.location || "",
+    linked_case_id: payload.linkedCaseId || null,
+    converted_from: null,
+    reminder_time: payload.reminderTime || "",
+    logs: payload.firstNote ? [{ id: uid("log"), author:"나", content: payload.firstNote, created_at: now }] : [],
+    created_at: now,
+    updated_at: now,
+  };
+  const created = await apiInsert("items", row);
+  items = [created, ...items];
+
+  if(payload.linkedCaseId){
+    const parent = items.find(i=>i.id===payload.linkedCaseId);
+    if(parent){
+      const newLogs = [...parent.logs, { id: uid("log"), author:"시스템", content:`🔗 연결된 새 건 등록: [${catById(created.category_id).name}] ${created.title}${created.date ? ` (${whenLabel(created)})` : ""}`, created_at: now }];
+      const updated = await apiUpdate("items", parent.id, { logs: newLogs, updated_at: now });
+      items = items.map(i=>i.id===updated.id?updated:i);
+    }
+  }
+  selectedItemId = created.id;
+  closeAllModals();
+  render();
+}
+
+async function addLog(itemId, content){
+  const item = items.find(i=>i.id===itemId);
+  if(!item) return;
+  const now = new Date().toISOString();
+  const newLogs = [...item.logs, { id: uid("log"), author:"나", content, created_at: now }];
+  const updated = await apiUpdate("items", itemId, { logs: newLogs, updated_at: now });
+  items = items.map(i=>i.id===updated.id?updated:i);
+  render();
+}
+
+async function setStatus(itemId, status){
+  const now = new Date().toISOString();
+  const updated = await apiUpdate("items", itemId, { status, updated_at: now });
+  items = items.map(i=>i.id===updated.id?updated:i);
+  render();
+}
+
+async function convertToProgress(itemId){
+  const item = items.find(i=>i.id===itemId);
+  if(!item) return;
+  const now = new Date().toISOString();
+  const originalName = catById(item.category_id).name;
+  const newLogs = [...item.logs, { id: uid("log"), author:"시스템", content:`📁 진행사항으로 전환됨 (원래: ${originalName})`, created_at: now }];
+  const updated = await apiUpdate("items", itemId, { category_id: CAT_PROGRESS, converted_from: item.converted_from || item.category_id, logs: newLogs, updated_at: now });
+  items = items.map(i=>i.id===updated.id?updated:i);
+  render();
+}
+
+async function updateItem(itemId, patch){
+  const now = new Date().toISOString();
+  const row = {
+    category_id: patch.categoryId, title: patch.title, date: patch.date || null,
+    all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
+    reminder_time: patch.reminderTime || "", assignees: patch.assignees || [], updated_at: now,
+  };
+  const updated = await apiUpdate("items", itemId, row);
+  items = items.map(i=>i.id===updated.id?updated:i);
+  render();
+}
+
+async function deleteItem(itemId){
+  await apiDelete("items", itemId);
+  items = items.filter(i=>i.id!==itemId);
+  if(selectedItemId===itemId) selectedItemId = null;
+  render();
+}
+
+async function createCategory(name, color){
+  const row = { id: uid("cat"), name, color };
+  const created = await apiInsert("categories", row);
+  categories = [...categories, created];
+  closeAllModals();
+  render();
+}
+
+function closeAllModals(){
+  document.querySelectorAll(".modal-backdrop").forEach(el=>el.remove());
+}
+
+/* ==================== RENDER ==================== */
+function render(){
+  const app = document.getElementById("app");
+  const upcoming = items.filter(i=> i.status!=="완료" && i.date && daysUntil(i.date)<=2).length;
+  const overdueInProgress = items.filter(i=> (activeCat==="all"||i.category_id===activeCat) && i.status==="진행중" && i.date && daysUntil(i.date)<0)
+    .sort((a,b)=> new Date(a.date)-new Date(b.date));
+
+  app.innerHTML = `
+    <header class="topbar">
+      <div class="flex items-center justify-between px-4 py-3 max-w mx-auto">
+        <div class="flex items-center gap-2">
+          <div style="width:10px;height:10px;border-radius:999px;background:var(--c-forest)"></div>
+          <h1 class="font-display text-lg font-semibold">진행기록</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          ${upcoming>0 ? `<div class="flex items-center gap-1 text-danger text-xs font-mono bg-danger-soft" style="padding:4px 10px;border-radius:999px;">🔔 ${upcoming}건 임박</div>` : ""}
+          <button class="btn-forest flex items-center gap-1" data-action="open-new-item">＋ 새 건</button>
+        </div>
+      </div>
+      <div class="chip-row max-w mx-auto">
+        <button class="chip ${activeCat==="all"?"active":""}" data-action="set-cat" data-cat="all">전체 ${items.length}</button>
+        ${categories.map(c=>{
+          const count = items.filter(i=>i.category_id===c.id).length;
+          const activeStyle = activeCat===c.id ? `background:${c.color};color:#fff;border-color:transparent;` : `color:${c.color};`;
+          return `<button class="chip" style="${activeStyle}" data-action="set-cat" data-cat="${c.id}">${esc(c.name)} ${count}</button>`;
+        }).join("")}
+        <button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-new-cat">🏷 카테고리</button>
+      </div>
+    </header>
+
+    <main class="max-w mx-auto px-4 py-5">
+      <div class="flex items-center justify-end gap-1 mb-3">
+        <button class="chip ${viewMode==="calendar"?"active":""}" data-action="set-view" data-view="calendar">📅 달력</button>
+        <button class="chip ${viewMode==="list"?"active":""}" data-action="set-view" data-view="list">☰ 목록</button>
+      </div>
+      <div id="main-body"></div>
+    </main>
+
+    <div id="detail-page"></div>
+  `;
+
+  renderMainBody(overdueInProgress);
+  renderDetailPage();
+  attachGlobalHandlers();
+}
+
+function renderMainBody(overdueInProgress){
+  const body = document.getElementById("main-body");
+  if(viewMode==="calendar"){
+    body.innerHTML = renderCalendarHTML() + `
+      ${overdueInProgress.length>0 ? `
+        <div class="mb-4" style="margin-top:16px;">
+          <p class="flex items-center gap-1_5 text-xs font-mono text-danger mb-2">🔔 기한이 지났지만 진행중인 건 ${overdueInProgress.length}건 · 진행 기록을 남겨보세요</p>
+          <div>${overdueInProgress.map(renderItemRowHTML).join("")}</div>
+        </div>` : ""}
+      <div class="text-center text-faint" style="padding:32px 0;">
+        <p class="text-sm">날짜 칸을 눌러 그날 일정을 확인하거나, "새 건"으로 등록해보세요.</p>
+      </div>
+    `;
+  } else {
+    const list = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+    const sorted = [...list].sort((a,b)=>{
+      const da = a.date? new Date(a.date).getTime(): Infinity;
+      const db = b.date? new Date(b.date).getTime(): Infinity;
+      if(da!==db) return da-db;
+      return new Date(b.updated_at)-new Date(a.updated_at);
+    });
+    body.innerHTML = `
+      <div class="cal-grid">
+        <div class="flex items-center gap-3 px-4 py-3 border-b">
+          <button class="text-sm font-medium text-muted" data-action="set-view" data-view="calendar">← 뒤로</button>
+          <h2 class="font-display text-base font-semibold">전체 목록</h2>
+        </div>
+        <div class="p-4">
+          ${sorted.length===0 ? `
+            <div class="text-center text-faint" style="padding:48px 0;">
+              <p class="font-display text-lg mb-1 text-ink">아직 기록이 없습니다</p>
+              <p class="text-sm">우측 상단 "새 건"으로 첫 진행 건을 등록해보세요.</p>
+            </div>` : sorted.map(renderItemRowHTML).join("")}
+        </div>
+      </div>
+    `;
+  }
+  bindMainBodyEvents();
+}
+
+function renderCalendarHTML(){
+  const year = monthCursor.getFullYear();
+  const month = monthCursor.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayISO = toISODate(new Date());
+  const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+  const byDate = {};
+  scoped.forEach(i=>{ if(!i.date) return; (byDate[i.date] = byDate[i.date]||[]).push(i); });
+
+  let cells = "";
+  for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const dayItems = byDate[iso] || [];
+    const isToday = iso===todayISO;
+    const chipsHtml = dayItems.slice(0,2).map(it=>
+      `<div class="cal-chip" style="background:${catById(it.category_id).color}" data-action="open-item" data-id="${it.id}">${esc(it.title)}</div>`
+    ).join("");
+    const more = dayItems.length>2 ? `<div class="text-10 text-faint">+${dayItems.length-2}</div>` : "";
+    cells += `<div class="cal-cell ${isToday?"today":""}" data-action="pick-date" data-date="${iso}">
+      <div class="text-11 font-mono text-faint mb-1">${d}</div>
+      ${chipsHtml}${more}
+    </div>`;
+  }
+
+  return `
+    <div class="cal-grid mb-2">
+      <div class="cal-head">
+        <button data-action="prev-month" class="text-muted">‹</button>
+        <span class="font-display text-sm font-semibold">${year}년 ${month+1}월</span>
+        <button data-action="next-month" class="text-muted">›</button>
+      </div>
+      <div class="cal-weekdays">${WEEKDAYS.map(w=>`<div>${w}</div>`).join("")}</div>
+      <div class="cal-body">${cells}</div>
+    </div>
+  `;
+}
+
+function renderItemRowHTML(item){
+  const cat = catById(item.category_id);
+  const d = daysUntil(item.date);
+  const isUrgent = d!==null && d<=2 && item.status!=="완료";
+  return `
+    <li class="item-row" style="border-left:4px solid ${cat.color}; list-style:none;" data-action="open-item" data-id="${item.id}">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 mb-1 flex-wrap">
+          <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+          ${item.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
+          ${item.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
+          ${item.linked_case_id ? `<span class="text-11 font-mono text-muted">↗ 연결됨</span>` : ""}
+        </div>
+        <p class="font-display text-base font-medium truncate text-ink">${esc(item.title)}</p>
+        <div class="flex items-center gap-3 mt-1 text-xs text-faint font-mono flex-wrap">
+          ${item.assignees?.length ? `<span>👤 ${item.assignees.map(esc).join(", ")}</span>` : ""}
+          ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
+          <span>업데이트 ${fmtDateTime(item.updated_at)}</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        ${item.date ? `<div class="text-xs font-mono" style="padding:4px 8px;border-radius:8px;${isUrgent?"background:var(--c-danger-soft);color:var(--c-danger);background:rgba(138,46,48,0.1);":"background:var(--c-page);color:var(--c-muted);"}">${whenLabel(item)}</div>` : ""}
+        <button class="text-faint" data-action="delete-item" data-id="${item.id}" title="삭제">🗑</button>
+      </div>
+    </li>
+  `;
+}
+
+function bindMainBodyEvents(){
+  document.querySelectorAll('[data-action="open-item"]').forEach(el=>{
+    el.addEventListener("click", (e)=>{ e.stopPropagation(); selectedItemId = el.dataset.id; renderDetailPage(); });
+  });
+  document.querySelectorAll('[data-action="delete-item"]').forEach(el=>{
+    el.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const item = items.find(i=>i.id===el.dataset.id);
+      if(item && confirm(`"${item.title}" 건을 삭제할까요?`)) deleteItem(el.dataset.id);
+    });
+  });
+  document.querySelectorAll('[data-action="pick-date"]').forEach(el=>{
+    el.addEventListener("click", ()=>{ selectedDate = el.dataset.date; openDayModal(); });
+  });
+}
+
+function attachGlobalHandlers(){
+  document.querySelectorAll('[data-action="set-cat"]').forEach(el=>{
+    el.addEventListener("click", ()=>{ activeCat = el.dataset.cat; selectedDate=null; viewMode="calendar"; render(); });
+  });
+  document.querySelectorAll('[data-action="set-view"]').forEach(el=>{
+    el.addEventListener("click", ()=>{ viewMode = el.dataset.view; render(); });
+  });
+  const openNewItemBtn = document.querySelector('[data-action="open-new-item"]');
+  if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
+  const openNewCatBtn = document.querySelector('[data-action="open-new-cat"]');
+  if(openNewCatBtn) openNewCatBtn.addEventListener("click", ()=> openNewCategoryModal());
+  const prevMonth = document.querySelector('[data-action="prev-month"]');
+  if(prevMonth) prevMonth.addEventListener("click", ()=>{ monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth()-1, 1); render(); });
+  const nextMonth = document.querySelector('[data-action="next-month"]');
+  if(nextMonth) nextMonth.addEventListener("click", ()=>{ monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth()+1, 1); render(); });
+}
+
+/* ---------- 날짜별 팝업 ---------- */
+function openDayModal(){
+  closeAllModals();
+  const dayItems = (activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat)).filter(i=>i.date===selectedDate);
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-height:80vh; display:flex; flex-direction:column;">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-display text-base font-semibold">${fmtDate(selectedDate)}</h3>
+        <button data-action="close-modal" class="text-faint">✕</button>
+      </div>
+      <div style="flex:1; overflow-y:auto;">
+        ${dayItems.length===0 ? `<p class="text-sm text-faint text-center" style="padding:32px 0;">이 날짜에 등록된 건이 없습니다.</p>` : dayItems.map(renderItemRowHTML).join("")}
+      </div>
+      <button class="btn-forest w-full mt-3" data-action="add-on-date">＋ 이 날짜에 새 건 등록</button>
+    </div>
+  `;
+  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop){ backdrop.remove(); } });
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
+  backdrop.querySelector('[data-action="add-on-date"]').addEventListener("click", ()=>{ backdrop.remove(); openNewItemModal(selectedDate); });
+  bindMainBodyEvents();
+}
+
+/* ---------- 상세 페이지 ---------- */
+function renderDetailPage(){
+  const container = document.getElementById("detail-page");
+  const item = items.find(i=>i.id===selectedItemId);
+  if(!item){ container.innerHTML = ""; return; }
+  const cat = catById(item.category_id);
+  const linkedChildren = items.filter(i=>i.linked_case_id===item.id);
+
+  container.innerHTML = `
+    <div class="fixed inset-0 bg-page z-30" style="display:flex;flex-direction:column;">
+      <div class="flex items-center justify-between px-4 py-3 border-b" style="background:rgba(255,255,255,0.95);">
+        <button data-action="close-detail" class="flex items-center gap-2 text-sm font-medium text-ink">← 일정 상세</button>
+        <div class="flex items-center gap-3">
+          <button data-action="edit-item" class="text-xs font-medium text-muted">수정</button>
+          <button data-action="delete-item-detail" class="text-danger">🗑</button>
+        </div>
+      </div>
+      <div style="flex:1; overflow-y:auto;">
+        <div class="max-w mx-auto">
+          <div class="px-4 py-3 border-b">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+              ${item.converted_from ? `<span class="text-11 font-mono text-faint">원래: ${esc(catById(item.converted_from).name)}</span>` : ""}
+            </div>
+            <h2 class="font-display text-xl font-semibold mt-2 mb-2">${esc(item.title)}</h2>
+            <div class="flex flex-wrap items-center gap-2 text-xs mb-2">
+              ${["진행중","완료","보류"].map(s=>`<button class="chip ${item.status===s?"active":""}" data-action="set-status" data-status="${s}">${s}</button>`).join("")}
+            </div>
+            <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
+              ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
+              ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
+              ${item.reminder_time ? `<span>🔔 알림 ${item.reminder_time}</span>` : ""}
+              ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(a)}">${esc(a.slice(0,1))}</span>`).join(" ")} ${item.assignees.map(esc).join(", ")}</span>` : ""}
+            </div>
+            ${item.category_id!==CAT_PROGRESS ? `<button class="btn-soft mt-3" data-action="convert-progress">진행사항으로 전환</button>` : ""}
+            ${linkedChildren.length>0 ? `
+              <div class="mt-3">
+                <p class="text-11 font-mono text-faint mb-1">연결된 일정 ${linkedChildren.length}건</p>
+                <div>${linkedChildren.map(c=>`<button class="text-xs" style="display:block;width:100%;text-align:left;background:var(--c-page);border:1px solid var(--c-border);border-radius:10px;padding:8px 10px;margin-bottom:4px;" data-action="open-item" data-id="${c.id}">[${esc(catById(c.category_id).name)}] ${esc(c.title)} ${c.date?`· ${whenLabel(c)}`:""}</button>`).join("")}</div>
+              </div>` : ""}
+          </div>
+          <div class="px-4 py-4" id="log-timeline">
+            ${item.logs.length===0 ? `<p class="text-sm text-faint text-center" style="padding:32px 0;">아직 진행 기록이 없습니다.</p>` : `
+              <div class="relative" style="padding-left:16px;">
+                <div style="position:absolute;left:5px;top:4px;bottom:4px;border-left:1px solid var(--c-border);"></div>
+                <div class="flex flex-col gap-3">
+                  ${item.logs.map(log=>`
+                    <div class="relative">
+                      <div style="position:absolute;left:-16px;top:6px;width:10px;height:10px;border-radius:999px;background:var(--c-gold);border:2px solid #fff;"></div>
+                      <div class="text-11 font-mono text-faint mb-1">${fmtDateTime(log.created_at)} · ${esc(log.author)}</div>
+                      <p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            `}
+          </div>
+        </div>
+      </div>
+      <div class="p-3 border-t flex items-end gap-2 max-w mx-auto w-full">
+        <textarea id="log-draft" rows="2" placeholder="진행 내용을 이어서 기록하세요…" class="input" style="resize:none;flex:1;"></textarea>
+        <button class="btn-forest" data-action="submit-log" style="padding:10px 14px;">＋</button>
+      </div>
+    </div>
+  `;
+  bindDetailEvents(item);
+}
+
+function bindDetailEvents(item){
+  const container = document.getElementById("detail-page");
+  container.querySelector('[data-action="close-detail"]').addEventListener("click", ()=>{ selectedItemId=null; renderDetailPage(); });
+  container.querySelector('[data-action="delete-item-detail"]').addEventListener("click", ()=>{
+    if(confirm(`"${item.title}" 건을 삭제할까요?`)) deleteItem(item.id);
+  });
+  container.querySelector('[data-action="edit-item"]').addEventListener("click", ()=> openEditItemModal(item));
+  container.querySelectorAll('[data-action="set-status"]').forEach(el=>{
+    el.addEventListener("click", ()=> setStatus(item.id, el.dataset.status));
+  });
+  const convertBtn = container.querySelector('[data-action="convert-progress"]');
+  if(convertBtn) convertBtn.addEventListener("click", ()=> convertToProgress(item.id));
+  container.querySelectorAll('[data-action="open-item"]').forEach(el=>{
+    el.addEventListener("click", ()=>{ selectedItemId = el.dataset.id; renderDetailPage(); });
+  });
+  container.querySelector('[data-action="submit-log"]').addEventListener("click", ()=>{
+    const ta = container.querySelector("#log-draft");
+    const val = ta.value.trim();
+    if(!val) return;
+    addLog(item.id, val);
+  });
+}
+
+/* ---------- 새 건 등록 모달 ---------- */
+function openNewItemModal(initialDate){
+  closeAllModals();
+  let linkedCase = null;
+  const defaultCat = categories[0]?.id || "";
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display text-lg font-semibold">새 건 등록</h3>
+        <button data-action="close-modal">✕</button>
+      </div>
+      <label class="label">카테고리</label>
+      <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
+        ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}" style="color:${c.color}">${esc(c.name)}</button>`).join("")}
+      </div>
+      <label class="label">큰제목</label>
+      <input id="f-title" class="input mb-3" placeholder="예: OO골프장 미팅" />
+      <div class="flex items-center justify-between mb-2">
+        <label class="label" style="margin-bottom:0;">날짜</label>
+        <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
+      </div>
+      <div class="flex gap-2 mb-3">
+        <input type="date" id="f-date" class="input" value="${initialDate || toISODate(new Date())}" />
+        <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
+      </div>
+      <label class="label">장소 (선택)</label>
+      <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
+      <label class="label">알림 받을 시간 (선택)</label>
+      <input type="time" id="f-reminder" class="input mb-3" />
+      <label class="label">공유할 사람 (선택)</label>
+      <div class="flex gap-2 mb-2">
+        <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+        <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
+      </div>
+      <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
+      <div id="link-search-wrap"></div>
+      <label class="label">첫 진행 내용 (선택)</label>
+      <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
+      <button class="btn-forest w-full" id="f-submit">등록하기</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
+
+  let selectedCategoryId = defaultCat;
+  let assignees = [];
+
+  function refreshCatPicker(){
+    backdrop.querySelectorAll(".cat-option").forEach(btn=>{
+      const c = categories.find(x=>x.id===btn.dataset.cat);
+      if(btn.dataset.cat===selectedCategoryId){ btn.style.background=c.color; btn.style.color="#fff"; btn.style.borderColor="transparent"; }
+      else { btn.style.background="#fff"; btn.style.color=c.color; btn.style.borderColor="var(--c-border)"; }
+    });
+    renderLinkSearch();
+  }
+  backdrop.querySelectorAll(".cat-option").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ selectedCategoryId = btn.dataset.cat; refreshCatPicker(); });
+  });
+
+  function renderAssigneeChips(){
+    backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
+      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+    ).join("");
+    backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
+      b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
+    });
+  }
+  backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
+    const inp = backdrop.querySelector("#f-assignee-input");
+    const name = inp.value.trim();
+    if(name && !assignees.includes(name)) assignees.push(name);
+    inp.value = "";
+    renderAssigneeChips();
+  });
+  backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
+    if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
+  });
+
+  backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
+    backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
+  });
+
+  function renderLinkSearch(){
+    const wrap = backdrop.querySelector("#link-search-wrap");
+    if(selectedCategoryId===CAT_PROGRESS){ wrap.innerHTML=""; return; }
+    if(linkedCase){
+      wrap.innerHTML = `
+        <label class="label">관련 진행사항에 연결</label>
+        <div class="flex items-center justify-between mb-3" style="background:var(--c-page);border:1px solid var(--c-border);border-radius:10px;padding:8px 12px;">
+          <span class="text-sm truncate">🔗 ${esc(linkedCase.title)}</span>
+          <button type="button" id="clear-link">✕</button>
+        </div>
+      `;
+      wrap.querySelector("#clear-link").addEventListener("click", ()=>{ linkedCase=null; renderLinkSearch(); });
+    } else {
+      wrap.innerHTML = `
+        <label class="label">관련 진행사항에 연결 (선택)</label>
+        <input id="f-case-search" class="input mb-1" placeholder="진행사항 건 제목 검색" />
+        <div id="case-results" class="mb-3"></div>
+      `;
+      wrap.querySelector("#f-case-search").addEventListener("input", (e)=>{
+        const q = e.target.value.trim().toLowerCase();
+        const results = document.getElementById("case-results");
+        if(!q){ results.innerHTML=""; return; }
+        const matches = items.filter(i=>i.category_id===CAT_PROGRESS && i.title.toLowerCase().includes(q)).slice(0,5);
+        results.innerHTML = matches.map(m=>`<button type="button" class="w-full text-sm" style="text-align:left;padding:8px;border:1px solid var(--c-border);border-radius:8px;margin-top:4px;background:#fff;" data-id="${m.id}">${esc(m.title)}</button>`).join("");
+        results.querySelectorAll("button").forEach(b=>{
+          b.addEventListener("click", ()=>{ linkedCase = items.find(i=>i.id===b.dataset.id); renderLinkSearch(); });
+        });
+      });
+    }
+  }
+
+  refreshCatPicker();
+  renderAssigneeChips();
+
+  backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
+    const title = backdrop.querySelector("#f-title").value.trim();
+    if(!title || !selectedCategoryId) return;
+    createItem({
+      categoryId: selectedCategoryId,
+      title,
+      date: backdrop.querySelector("#f-date").value,
+      allDay: backdrop.querySelector("#f-allday").checked,
+      time: backdrop.querySelector("#f-time").value,
+      location: backdrop.querySelector("#f-location").value,
+      reminderTime: backdrop.querySelector("#f-reminder").value,
+      assignees,
+      firstNote: backdrop.querySelector("#f-note").value,
+      linkedCaseId: linkedCase?.id || null,
+    });
+  });
+}
+
+/* ---------- 수정 모달 ---------- */
+function openEditItemModal(item){
+  closeAllModals();
+  let selectedCategoryId = item.category_id;
+  let assignees = [...(item.assignees||[])];
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display text-lg font-semibold">건 수정</h3>
+        <button data-action="close-modal">✕</button>
+      </div>
+      <label class="label">카테고리</label>
+      <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
+        ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}">${esc(c.name)}</button>`).join("")}
+      </div>
+      <label class="label">큰제목</label>
+      <input id="f-title" class="input mb-3" value="${esc(item.title)}" />
+      <div class="flex items-center justify-between mb-2">
+        <label class="label" style="margin-bottom:0;">날짜</label>
+        <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" ${item.all_day!==false?"checked":""} /> 하루종일</label>
+      </div>
+      <div class="flex gap-2 mb-3">
+        <input type="date" id="f-date" class="input" value="${item.date||""}" />
+        <input type="time" id="f-time" class="input ${item.all_day!==false?"hidden":""}" style="width:110px;" value="${item.time||"09:00"}" />
+      </div>
+      <label class="label">장소</label>
+      <input id="f-location" class="input mb-3" value="${esc(item.location||"")}" />
+      <label class="label">알림 받을 시간</label>
+      <input type="time" id="f-reminder" class="input mb-3" value="${item.reminder_time||""}" />
+      <label class="label">공유할 사람</label>
+      <div class="flex gap-2 mb-2">
+        <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+        <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
+      </div>
+      <div class="flex flex-wrap gap-2 mb-4" id="assignee-chips"></div>
+      <div class="flex gap-2">
+        <button type="button" class="btn-soft flex-1" data-action="close-modal">취소</button>
+        <button class="btn-forest flex-1" id="f-submit">저장</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  backdrop.querySelectorAll('[data-action="close-modal"]').forEach(b=> b.addEventListener("click", ()=> backdrop.remove()));
+
+  function refreshCatPicker(){
+    backdrop.querySelectorAll(".cat-option").forEach(btn=>{
+      const c = categories.find(x=>x.id===btn.dataset.cat);
+      if(btn.dataset.cat===selectedCategoryId){ btn.style.background=c.color; btn.style.color="#fff"; btn.style.borderColor="transparent"; }
+      else { btn.style.background="#fff"; btn.style.color=c.color; btn.style.borderColor="var(--c-border)"; }
+    });
+  }
+  backdrop.querySelectorAll(".cat-option").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ selectedCategoryId = btn.dataset.cat; refreshCatPicker(); });
+  });
+  refreshCatPicker();
+
+  function renderAssigneeChips(){
+    backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
+      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+    ).join("");
+    backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
+      b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
+    });
+  }
+  renderAssigneeChips();
+  backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
+    const inp = backdrop.querySelector("#f-assignee-input");
+    const name = inp.value.trim();
+    if(name && !assignees.includes(name)) assignees.push(name);
+    inp.value = "";
+    renderAssigneeChips();
+  });
+  backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
+    if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
+  });
+  backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
+    backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
+  });
+
+  backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
+    const title = backdrop.querySelector("#f-title").value.trim();
+    if(!title) return;
+    updateItem(item.id, {
+      categoryId: selectedCategoryId,
+      title,
+      date: backdrop.querySelector("#f-date").value,
+      allDay: backdrop.querySelector("#f-allday").checked,
+      time: backdrop.querySelector("#f-time").value,
+      location: backdrop.querySelector("#f-location").value,
+      reminderTime: backdrop.querySelector("#f-reminder").value,
+      assignees,
+    });
+    backdrop.remove();
+  });
+}
+
+/* ---------- 카테고리 추가 모달 ---------- */
+function openNewCategoryModal(){
+  closeAllModals();
+  let color = PALETTE[0];
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:360px;">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display text-lg font-semibold">카테고리 추가</h3>
+        <button data-action="close-modal">✕</button>
+      </div>
+      <input id="f-cat-name" class="input mb-3" placeholder="예: 재고관리" />
+      <div class="flex gap-2 mb-4" id="color-picker">
+        ${PALETTE.map(c=>`<button type="button" class="color-option" data-color="${c}" style="width:28px;height:28px;border-radius:999px;background:${c};"></button>`).join("")}
+      </div>
+      <button class="btn-forest w-full" id="f-submit">추가하기</button>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
+  backdrop.querySelectorAll(".color-option").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ color = btn.dataset.color; });
+  });
+  backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
+    const name = backdrop.querySelector("#f-cat-name").value.trim();
+    if(!name) return;
+    createCategory(name, color);
+  });
+}
+
+/* ---------- 비밀번호 게이트 ---------- */
+function checkPassword(){
+  const input = document.getElementById("password-input").value;
+  if(input === APP_PASSWORD){
+    sessionStorage.setItem("ptk_authed", "1");
+    startApp();
+  } else {
+    document.getElementById("password-error").classList.remove("hidden");
+  }
+}
+document.getElementById("password-submit").addEventListener("click", checkPassword);
+document.getElementById("password-input").addEventListener("keydown", (e)=>{ if(e.key==="Enter") checkPassword(); });
+
+async function startApp(){
+  document.getElementById("password-screen").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  try{
+    await loadAll();
+  }catch(err){
+    document.getElementById("app").innerHTML = `<div style="padding:40px;text-align:center;color:var(--c-danger);">
+      데이터를 불러오지 못했습니다. SUPABASE_URL / SUPABASE_ANON_KEY 설정을 확인해주세요.<br/><span style="font-size:12px;color:var(--c-faint);">${esc(err.message)}</span>
+    </div>`;
+  }
+}
+
+if(sessionStorage.getItem("ptk_authed")==="1"){ startApp(); }
+</script>
+</body>
+</html>
