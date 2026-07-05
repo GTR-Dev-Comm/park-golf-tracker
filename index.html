@@ -525,26 +525,17 @@ function renderItemRowHTML(item){
   const cat = catById(item.category_id);
   const d = daysUntil(item.date);
   const isUrgent = d!==null && d<=2 && item.status!=="완료";
+  const statusMark = item.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>`
+    : item.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : "";
   return `
-    <li class="item-row" style="border-left:4px solid ${cat.color}; list-style:none;" data-action="open-item" data-id="${item.id}">
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2 mb-1 flex-wrap">
-          <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-          ${item.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
-          ${item.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
-          ${item.linked_case_id ? `<span class="text-11 font-mono text-muted">↗ 연결됨</span>` : ""}
-        </div>
-        <p class="font-display text-base font-medium truncate text-ink">${esc(item.title)}</p>
-        <div class="flex items-center gap-3 mt-1 text-xs text-faint font-mono flex-wrap">
-          ${item.assignees?.length ? `<span>👤 ${item.assignees.map(esc).join(", ")}</span>` : ""}
-          ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
-          <span>업데이트 ${fmtDateTime(item.updated_at)}</span>
-        </div>
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        ${item.date ? `<div class="text-xs font-mono" style="padding:4px 8px;border-radius:8px;${isUrgent?"background:var(--c-danger-soft);color:var(--c-danger);background:rgba(138,46,48,0.1);":"background:var(--c-page);color:var(--c-muted);"}">${whenLabel(item)}</div>` : ""}
-        <button class="text-faint" data-action="delete-item" data-id="${item.id}" title="삭제">🗑</button>
-      </div>
+    <li class="item-row" style="border-left:4px solid ${cat.color}; list-style:none; display:flex; align-items:center; gap:8px; white-space:nowrap; overflow:hidden;" data-action="open-item" data-id="${item.id}">
+      <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+      <p class="font-display text-base font-medium truncate text-ink" style="flex:1;min-width:0;margin:0;">${esc(item.title)}</p>
+      ${item.location ? `<span class="text-xs text-faint shrink-0">📍</span>` : ""}
+      ${item.linked_case_id ? `<span class="text-11 font-mono text-muted shrink-0">↗</span>` : ""}
+      ${statusMark}
+      ${item.date ? `<span class="text-xs font-mono shrink-0" style="padding:4px 8px;border-radius:8px;${isUrgent?"background:rgba(138,46,48,0.1);color:var(--c-danger);":"background:var(--c-page);color:var(--c-muted);"}">${whenLabel(item)}</span>` : ""}
+      <button class="text-faint shrink-0" data-action="delete-item" data-id="${item.id}" title="삭제">🗑</button>
     </li>
   `;
 }
