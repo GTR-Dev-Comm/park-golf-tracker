@@ -439,7 +439,7 @@ function renderMainBody(overdueInProgress){
           </div>
           ${agendaItems.length===0
             ? `<p class="text-sm text-faint" style="padding:16px 0;">이 날짜에 등록된 건이 없습니다.</p>`
-            : agendaItems.map(renderItemRowHTML).join("")}
+            : agendaItems.map(renderAgendaCardHTML).join("")}
         ` : ""}
       </div>
       ${overdueInProgress.length>0 ? `
@@ -517,6 +517,25 @@ function renderCalendarHTML(){
       </div>
       <div class="cal-weekdays">${WEEKDAYS.map(w=>`<div>${w}</div>`).join("")}</div>
       <div class="cal-body">${cells}</div>
+    </div>
+  `;
+}
+
+function renderAgendaCardHTML(item){
+  const cat = catById(item.category_id);
+  const lastLog = item.logs && item.logs.length ? item.logs[item.logs.length-1] : null;
+  return `
+    <div class="agenda-card" style="border-left:4px solid ${cat.color}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${item.id}">
+      <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+        ${item.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
+        ${item.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
+      </div>
+      <p class="font-display text-base font-semibold text-ink mb-1">${esc(item.title)}</p>
+      <p class="text-sm text-muted font-mono mb-1">${whenLabel(item)}</p>
+      ${item.location ? `<p class="text-sm text-faint mb-1">📍 ${esc(item.location)}</p>` : ""}
+      ${item.assignees?.length ? `<p class="text-xs text-faint mb-1">👤 ${item.assignees.map(esc).join(", ")}</p>` : ""}
+      ${lastLog ? `<p class="text-xs text-faint" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--c-border);white-space:normal;">${esc(lastLog.content)}</p>` : ""}
     </div>
   `;
 }
