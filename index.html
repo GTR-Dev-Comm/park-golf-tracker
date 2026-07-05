@@ -139,6 +139,64 @@ function whenLabel(item){ if(!item.date) return ""; return item.all_day===false 
 function catById(id){ return categories.find(c=>c.id===id) || {name:"미분류", color:"#999"}; }
 function esc(s){ return (s||"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
 
+const DAYS_BEFORE_LABELS = { 0:"당일", 1:"1일 전", 2:"2일 전" };
+function getReminders(item){
+  if(item.reminders && item.reminders.length) return item.reminders;
+  if(item.reminder_time) return [{ id: uid("rem"), daysBefore:0, time:item.reminder_time }];
+  return [];
+}
+function reminderSummary(item){
+  return getReminders(item).map(r=>`${DAYS_BEFORE_LABELS[r.daysBefore]||"당일"} ${r.time}`).join(", ");
+}
+function hourOptions(selected){
+  let s=""; for(let h=0;h<24;h++){ const v=String(h).padStart(2,"0"); s+=`<option value="${v}" ${v===selected?"selected":""}>${v}시</option>`; } return s;
+}
+function minuteOptions(selected){
+  let s=""; for(let m=0;m<60;m+=5){ const v=String(m).padStart(2,"0"); s+=`<option value="${v}" ${v===selected?"selected":""}>${v}분</option>`; } return s;
+}
+function reminderRowHTML(r, idx){
+  const [h,m] = (r.time||"09:00").split(":");
+  return `
+    <div class="flex items-center gap-2 mb-2 reminder-row" data-idx="${idx}">
+      <select class="input rem-days" style="flex:1;">
+        ${[0,1,2].map(d=>`<option value="${d}" ${r.daysBefore===d?"selected":""}>${DAYS_BEFORE_LABELS[d]}</option>`).join("")}
+      </select>
+      <select class="input rem-hour" style="width:78px;">${hourOptions(h)}</select>
+      <select class="input rem-min" style="width:78px;">${minuteOptions(m)}</select>
+      <button type="button" class="rem-remove text-faint" data-idx="${idx}">✕</button>
+    </div>
+  `;
+}
+function createReminderEditor(container, initial){
+  let reminders = (initial||[]).map(r=>({...r}));
+  function sync(){
+    container.querySelectorAll(".reminder-row").forEach(row=>{
+      const idx = Number(row.dataset.idx);
+      reminders[idx] = {
+        id: reminders[idx].id,
+        daysBefore: Number(row.querySelector(".rem-days").value),
+        time: `${row.querySelector(".rem-hour").value}:${row.querySelector(".rem-min").value}`,
+      };
+    });
+  }
+  function renderRows(){
+    container.querySelector(".reminder-rows").innerHTML = reminders.length
+      ? reminders.map(reminderRowHTML).join("")
+      : `<p class="text-xs text-faint mb-2">등록된 알림이 없습니다</p>`;
+    container.querySelectorAll(".reminder-row select").forEach(sel=> sel.addEventListener("change", sync));
+    container.querySelectorAll(".rem-remove").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sync(); reminders.splice(Number(btn.dataset.idx),1); renderRows(); });
+    });
+  }
+  container.querySelector(".rem-add").addEventListener("click", ()=>{
+    sync();
+    reminders.push({ id: uid("rem"), daysBefore:0, time:"09:00" });
+    renderRows();
+  });
+  renderRows();
+  return { get: ()=>{ sync(); return reminders; } };
+}
+
 /* ---------- Supabase REST ---------- */
 async function apiGet(table, query=""){
   const r = await fetch(`${REST}/${table}?select=*${query}`, { headers: HEADERS });
@@ -183,7 +241,8 @@ async function createItem(payload){
     location: payload.location || "",
     linked_case_id: payload.linkedCaseId || null,
     converted_from: null,
-    reminder_time: payload.reminderTime || "",
+    reminder_time: "",
+    reminders: payload.reminders || [],
     logs: payload.firstNote ? [{ id: uid("log"), author:"나", content: payload.firstNote, created_at: now }] : [],
     created_at: now,
     updated_at: now,
@@ -237,7 +296,7 @@ async function updateItem(itemId, patch){
   const row = {
     category_id: patch.categoryId, title: patch.title, date: patch.date || null,
     all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
-    reminder_time: patch.reminderTime || "", assignees: patch.assignees || [], updated_at: now,
+    reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
   };
   const updated = await apiUpdate("items", itemId, row);
   items = items.map(i=>i.id===updated.id?updated:i);
@@ -506,7 +565,7 @@ function renderDetailPage(){
             <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
               ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
-              ${item.reminder_time ? `<span>🔔 알림 ${item.reminder_time}</span>` : ""}
+              ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
               ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(a)}">${esc(a.slice(0,1))}</span>`).join(" ")} ${item.assignees.map(esc).join(", ")}</span>` : ""}
             </div>
             ${item.category_id!==CAT_PROGRESS ? `<button class="btn-soft mt-3" data-action="convert-progress">진행사항으로 전환</button>` : ""}
@@ -595,8 +654,11 @@ function openNewItemModal(initialDate){
       </div>
       <label class="label">장소 (선택)</label>
       <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
-      <label class="label">알림 받을 시간 (선택)</label>
-      <input type="time" id="f-reminder" class="input mb-3" />
+      <label class="label">알림 (선택, 여러 개 추가 가능)</label>
+      <div id="reminder-editor" class="mb-3">
+        <div class="reminder-rows"></div>
+        <button type="button" class="btn-soft rem-add">＋ 알림 추가</button>
+      </div>
       <label class="label">공유할 사람 (선택)</label>
       <div class="flex gap-2 mb-2">
         <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
@@ -684,6 +746,7 @@ function openNewItemModal(initialDate){
 
   refreshCatPicker();
   renderAssigneeChips();
+  const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
     const title = backdrop.querySelector("#f-title").value.trim();
@@ -695,7 +758,7 @@ function openNewItemModal(initialDate){
       allDay: backdrop.querySelector("#f-allday").checked,
       time: backdrop.querySelector("#f-time").value,
       location: backdrop.querySelector("#f-location").value,
-      reminderTime: backdrop.querySelector("#f-reminder").value,
+      reminders: reminderEditor.get(),
       assignees,
       firstNote: backdrop.querySelector("#f-note").value,
       linkedCaseId: linkedCase?.id || null,
@@ -732,8 +795,11 @@ function openEditItemModal(item){
       </div>
       <label class="label">장소</label>
       <input id="f-location" class="input mb-3" value="${esc(item.location||"")}" />
-      <label class="label">알림 받을 시간</label>
-      <input type="time" id="f-reminder" class="input mb-3" value="${item.reminder_time||""}" />
+      <label class="label">알림 (여러 개 추가 가능)</label>
+      <div id="reminder-editor" class="mb-3">
+        <div class="reminder-rows"></div>
+        <button type="button" class="btn-soft rem-add">＋ 알림 추가</button>
+      </div>
       <label class="label">공유할 사람</label>
       <div class="flex gap-2 mb-2">
         <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
@@ -771,6 +837,7 @@ function openEditItemModal(item){
     });
   }
   renderAssigneeChips();
+  const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(item));
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
     const name = inp.value.trim();
@@ -795,7 +862,7 @@ function openEditItemModal(item){
       allDay: backdrop.querySelector("#f-allday").checked,
       time: backdrop.querySelector("#f-time").value,
       location: backdrop.querySelector("#f-location").value,
-      reminderTime: backdrop.querySelector("#f-reminder").value,
+      reminders: reminderEditor.get(),
       assignees,
     });
     backdrop.remove();
