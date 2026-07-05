@@ -217,6 +217,10 @@ async function apiDelete(table, id){
   const r = await fetch(`${REST}/${table}?id=eq.${encodeURIComponent(id)}`, { method:"DELETE", headers: HEADERS });
   if(!r.ok) throw new Error(`DELETE ${table} failed`);
 }
+async function apiUpdateWhere(table, filterQuery, patch){
+  const r = await fetch(`${REST}/${table}?${filterQuery}`, { method:"PATCH", headers: HEADERS, body: JSON.stringify(patch) });
+  if(!r.ok) throw new Error(`UPDATE(where) ${table} failed`);
+}
 
 async function loadAll(){
   [categories, items] = await Promise.all([
@@ -314,8 +318,30 @@ async function createCategory(name, color){
   const row = { id: uid("cat"), name, color };
   const created = await apiInsert("categories", row);
   categories = [...categories, created];
-  closeAllModals();
   render();
+  openCategoryManagerModal();
+}
+
+const DEFAULT_CAT_IDS = [CAT_SCHEDULE, CAT_TODO, CAT_MEETING, CAT_PROGRESS];
+
+async function updateCategory(id, name, color){
+  const updated = await apiUpdate("categories", id, { name, color });
+  categories = categories.map(c=>c.id===id?updated:c);
+  render();
+  openCategoryManagerModal();
+}
+
+async function deleteCategory(id){
+  const count = items.filter(i=>i.category_id===id).length;
+  if(count>0){
+    await apiUpdateWhere("items", `category_id=eq.${encodeURIComponent(id)}`, { category_id: null });
+    items = items.map(i=> i.category_id===id ? {...i, category_id:null} : i);
+  }
+  await apiDelete("categories", id);
+  categories = categories.filter(c=>c.id!==id);
+  if(activeCat===id) activeCat = "all";
+  render();
+  openCategoryManagerModal();
 }
 
 function closeAllModals(){
@@ -502,7 +528,7 @@ function attachGlobalHandlers(){
   const openNewItemBtn = document.querySelector('[data-action="open-new-item"]');
   if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
   const openNewCatBtn = document.querySelector('[data-action="open-new-cat"]');
-  if(openNewCatBtn) openNewCatBtn.addEventListener("click", ()=> openNewCategoryModal());
+  if(openNewCatBtn) openNewCatBtn.addEventListener("click", ()=> openCategoryManagerModal());
   const prevMonth = document.querySelector('[data-action="prev-month"]');
   if(prevMonth) prevMonth.addEventListener("click", ()=>{ monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth()-1, 1); render(); });
   const nextMonth = document.querySelector('[data-action="next-month"]');
@@ -869,35 +895,83 @@ function openEditItemModal(item){
   });
 }
 
-/* ---------- 카테고리 추가 모달 ---------- */
-function openNewCategoryModal(){
+/* ---------- 카테고리 관리 모달 (목록/수정/삭제/추가) ---------- */
+function openCategoryManagerModal(){
   closeAllModals();
-  let color = PALETTE[0];
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
   backdrop.innerHTML = `
-    <div class="modal-panel" style="max-width:360px;">
+    <div class="modal-panel" style="max-width:420px;">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="font-display text-lg font-semibold">카테고리 추가</h3>
+        <h3 class="font-display text-lg font-semibold">카테고리 관리</h3>
         <button data-action="close-modal">✕</button>
       </div>
-      <input id="f-cat-name" class="input mb-3" placeholder="예: 재고관리" />
-      <div class="flex gap-2 mb-4" id="color-picker">
-        ${PALETTE.map(c=>`<button type="button" class="color-option" data-color="${c}" style="width:28px;height:28px;border-radius:999px;background:${c};"></button>`).join("")}
+      <div id="cat-list" class="mb-4"></div>
+      <div class="border-t" style="padding-top:16px;">
+        <label class="label">새 카테고리 추가</label>
+        <input id="f-cat-name" class="input mb-3" placeholder="예: 재고관리" />
+        <div class="flex gap-2 mb-3" id="color-picker">
+          ${PALETTE.map((c,idx)=>`<button type="button" class="color-option" data-color="${c}" style="width:28px;height:28px;border-radius:999px;background:${c};border:${idx===0?"2px solid var(--c-ink)":"2px solid transparent"};"></button>`).join("")}
+        </div>
+        <button class="btn-forest w-full" id="f-submit">추가하기</button>
       </div>
-      <button class="btn-forest w-full" id="f-submit">추가하기</button>
     </div>
   `;
   document.body.appendChild(backdrop);
   backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
   backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
+
+  function renderCatList(){
+    const listEl = backdrop.querySelector("#cat-list");
+    listEl.innerHTML = categories.map(c=>{
+      const isDefault = DEFAULT_CAT_IDS.includes(c.id);
+      const count = items.filter(i=>i.category_id===c.id).length;
+      return `
+        <div class="cat-row flex items-center gap-2 mb-2" data-id="${c.id}">
+          <span style="width:16px;height:16px;border-radius:999px;background:${c.color};flex-shrink:0;"></span>
+          <input class="input cat-name-input" value="${esc(c.name)}" style="flex:1;" />
+          <input type="color" class="cat-color-input" value="${c.color}" style="width:32px;height:32px;padding:0;border:1px solid var(--c-border);border-radius:8px;" />
+          <button type="button" class="btn-soft cat-save" data-id="${c.id}">저장</button>
+          ${isDefault
+            ? `<span class="text-11 text-faint" style="width:20px;text-align:center;" title="기본 카테고리는 삭제할 수 없습니다">🔒</span>`
+            : `<button type="button" class="text-danger cat-delete" data-id="${c.id}" data-count="${count}" title="삭제">🗑</button>`}
+        </div>
+      `;
+    }).join("");
+
+    listEl.querySelectorAll(".cat-save").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const row = listEl.querySelector(`.cat-row[data-id="${btn.dataset.id}"]`);
+        const name = row.querySelector(".cat-name-input").value.trim();
+        const color = row.querySelector(".cat-color-input").value;
+        if(!name) return;
+        updateCategory(btn.dataset.id, name, color);
+      });
+    });
+    listEl.querySelectorAll(".cat-delete").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const count = Number(btn.dataset.count);
+        const msg = count>0
+          ? `이 카테고리를 쓰는 건이 ${count}개 있습니다. 삭제하면 그 건들은 "미분류"로 남습니다. 계속할까요?`
+          : "이 카테고리를 삭제할까요?";
+        if(confirm(msg)) deleteCategory(btn.dataset.id);
+      });
+    });
+  }
+  renderCatList();
+
+  let newColor = PALETTE[0];
   backdrop.querySelectorAll(".color-option").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ color = btn.dataset.color; });
+    btn.addEventListener("click", ()=>{
+      newColor = btn.dataset.color;
+      backdrop.querySelectorAll(".color-option").forEach(b=> b.style.border = "2px solid transparent");
+      btn.style.border = "2px solid var(--c-ink)";
+    });
   });
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
     const name = backdrop.querySelector("#f-cat-name").value.trim();
     if(!name) return;
-    createCategory(name, color);
+    createCategory(name, newColor);
   });
 }
 
