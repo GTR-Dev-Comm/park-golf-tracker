@@ -529,8 +529,8 @@ function renderItemRowHTML(item){
     : item.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : "";
   return `
     <li class="item-row" style="border-left:4px solid ${cat.color}; list-style:none; display:flex; align-items:center; gap:8px; white-space:nowrap; overflow:hidden;" data-action="open-item" data-id="${item.id}">
-      <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
       <p class="font-display text-base font-medium truncate text-ink" style="flex:1;min-width:0;margin:0;">${esc(item.title)}</p>
+      <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
       ${item.location ? `<span class="text-xs text-faint shrink-0">📍</span>` : ""}
       ${item.linked_case_id ? `<span class="text-11 font-mono text-muted shrink-0">↗</span>` : ""}
       ${statusMark}
