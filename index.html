@@ -255,133 +255,183 @@ async function loadAll(){
 
 /* ---------- mutations ---------- */
 async function createItem(payload){
-  const now = new Date().toISOString();
-  const row = {
-    id: uid("item"),
-    category_id: payload.categoryId,
-    title: payload.title,
-    subtitle: payload.subtitle || "",
-    status: "진행중",
-    assignees: payload.assignees || [],
-    date: payload.date || null,
-    all_day: payload.allDay,
-    time: payload.allDay ? "" : payload.time,
-    location: payload.location || "",
-    linked_case_id: null,
-    converted_from: null,
-    reminder_time: "",
-    reminders: payload.reminders || [],
-    logs: payload.firstNote ? [{ id: uid("log"), author:"나", content: payload.firstNote, created_at: now }] : [],
-    created_at: now,
-    updated_at: now,
-  };
-  const created = await apiInsert("items", row);
-  items = [created, ...items];
-  selectedItemId = created.id;
-  closeAllModals();
-  render();
+  try{
+    const now = new Date().toISOString();
+    const row = {
+      id: uid("item"),
+      category_id: payload.categoryId,
+      title: payload.title,
+      subtitle: payload.subtitle || "",
+      status: "진행중",
+      assignees: payload.assignees || [],
+      date: payload.date || null,
+      all_day: payload.allDay,
+      time: payload.allDay ? "" : payload.time,
+      location: payload.location || "",
+      linked_case_id: null,
+      converted_from: null,
+      reminder_time: "",
+      reminders: payload.reminders || [],
+      logs: payload.firstNote ? [{ id: uid("log"), author:"나", content: payload.firstNote, created_at: now }] : [],
+      created_at: now,
+      updated_at: now,
+    };
+    const created = await apiInsert("items", row);
+    items = [created, ...items];
+    selectedItemId = created.id;
+    closeAllModals();
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message + "\n(Supabase 설정/마이그레이션 SQL을 확인해주세요)");
+    console.error(err);
+  }
 }
 
 async function addSubEntry(parentId, payload){
-  const parent = items.find(i=>i.id===parentId);
-  if(!parent) return;
-  const now = new Date().toISOString();
-  const entry = {
-    id: uid("log"),
-    author: "나",
-    subtitle: payload.subtitle || "",
-    date: payload.date || null,
-    all_day: payload.allDay,
-    time: payload.allDay ? "" : payload.time,
-    location: payload.location || "",
-    reminders: payload.reminders || [],
-    assignees: payload.assignees || [],
-    content: payload.content || "",
-    created_at: now,
-  };
-  const newLogs = [...(parent.logs||[]), entry];
-  const updated = await apiUpdate("items", parentId, { logs: newLogs, updated_at: now });
-  items = items.map(i=>i.id===updated.id?updated:i);
-  selectedItemId = updated.id;
-  closeAllModals();
-  render();
+  try{
+    const parent = items.find(i=>i.id===parentId);
+    if(!parent) return;
+    const now = new Date().toISOString();
+    const entry = {
+      id: uid("log"),
+      author: "나",
+      subtitle: payload.subtitle || "",
+      date: payload.date || null,
+      all_day: payload.allDay,
+      time: payload.allDay ? "" : payload.time,
+      location: payload.location || "",
+      reminders: payload.reminders || [],
+      assignees: payload.assignees || [],
+      content: payload.content || "",
+      created_at: now,
+    };
+    const newLogs = [...(parent.logs||[]), entry];
+    const updated = await apiUpdate("items", parentId, { logs: newLogs, updated_at: now });
+    items = items.map(i=>i.id===updated.id?updated:i);
+    selectedItemId = updated.id;
+    closeAllModals();
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function addLog(itemId, content){
-  const item = items.find(i=>i.id===itemId);
-  if(!item) return;
-  const now = new Date().toISOString();
-  const newLogs = [...item.logs, { id: uid("log"), author:"나", content, created_at: now }];
-  const updated = await apiUpdate("items", itemId, { logs: newLogs, updated_at: now });
-  items = items.map(i=>i.id===updated.id?updated:i);
-  render();
+  try{
+    const item = items.find(i=>i.id===itemId);
+    if(!item) return;
+    const now = new Date().toISOString();
+    const newLogs = [...item.logs, { id: uid("log"), author:"나", content, created_at: now }];
+    const updated = await apiUpdate("items", itemId, { logs: newLogs, updated_at: now });
+    items = items.map(i=>i.id===updated.id?updated:i);
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function setStatus(itemId, status){
-  const now = new Date().toISOString();
-  const updated = await apiUpdate("items", itemId, { status, updated_at: now });
-  items = items.map(i=>i.id===updated.id?updated:i);
-  render();
+  try{
+    const now = new Date().toISOString();
+    const updated = await apiUpdate("items", itemId, { status, updated_at: now });
+    items = items.map(i=>i.id===updated.id?updated:i);
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function convertToProgress(itemId){
-  const item = items.find(i=>i.id===itemId);
-  if(!item) return;
-  const now = new Date().toISOString();
-  const originalName = catById(item.category_id).name;
-  const newLogs = [...item.logs, { id: uid("log"), author:"시스템", content:`📁 진행사항으로 전환됨 (원래: ${originalName})`, created_at: now }];
-  const updated = await apiUpdate("items", itemId, { category_id: CAT_PROGRESS, converted_from: item.converted_from || item.category_id, logs: newLogs, updated_at: now });
-  items = items.map(i=>i.id===updated.id?updated:i);
-  render();
+  try{
+    const item = items.find(i=>i.id===itemId);
+    if(!item) return;
+    const now = new Date().toISOString();
+    const originalName = catById(item.category_id).name;
+    const newLogs = [...item.logs, { id: uid("log"), author:"시스템", content:`📁 진행사항으로 전환됨 (원래: ${originalName})`, created_at: now }];
+    const updated = await apiUpdate("items", itemId, { category_id: CAT_PROGRESS, converted_from: item.converted_from || item.category_id, logs: newLogs, updated_at: now });
+    items = items.map(i=>i.id===updated.id?updated:i);
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function updateItem(itemId, patch){
-  const now = new Date().toISOString();
-  const row = {
-    category_id: patch.categoryId, title: patch.title, subtitle: patch.subtitle || "", date: patch.date || null,
-    all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
-    reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
-  };
-  const updated = await apiUpdate("items", itemId, row);
-  items = items.map(i=>i.id===updated.id?updated:i);
-  render();
+  try{
+    const now = new Date().toISOString();
+    const row = {
+      category_id: patch.categoryId, title: patch.title, subtitle: patch.subtitle || "", date: patch.date || null,
+      all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
+      reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
+    };
+    const updated = await apiUpdate("items", itemId, row);
+    items = items.map(i=>i.id===updated.id?updated:i);
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function deleteItem(itemId){
-  await apiDelete("items", itemId);
-  items = items.filter(i=>i.id!==itemId);
-  if(selectedItemId===itemId) selectedItemId = null;
-  render();
+  try{
+    await apiDelete("items", itemId);
+    items = items.filter(i=>i.id!==itemId);
+    if(selectedItemId===itemId) selectedItemId = null;
+    render();
+  }catch(err){
+    alert("삭제에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function createCategory(name, color){
-  const row = { id: uid("cat"), name, color };
-  const created = await apiInsert("categories", row);
-  categories = [...categories, created];
-  render();
-  openCategoryManagerModal();
+  try{
+    const row = { id: uid("cat"), name, color };
+    const created = await apiInsert("categories", row);
+    categories = [...categories, created];
+    render();
+    openCategoryManagerModal();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 const DEFAULT_CAT_IDS = [CAT_SCHEDULE, CAT_TODO, CAT_MEETING, CAT_PROGRESS];
 
 async function updateCategory(id, name, color){
-  const updated = await apiUpdate("categories", id, { name, color });
-  categories = categories.map(c=>c.id===id?updated:c);
-  render();
-  openCategoryManagerModal();
+  try{
+    const updated = await apiUpdate("categories", id, { name, color });
+    categories = categories.map(c=>c.id===id?updated:c);
+    render();
+    openCategoryManagerModal();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 async function deleteCategory(id){
-  const count = items.filter(i=>i.category_id===id).length;
-  if(count>0){
-    await apiUpdateWhere("items", `category_id=eq.${encodeURIComponent(id)}`, { category_id: null });
-    items = items.map(i=> i.category_id===id ? {...i, category_id:null} : i);
+  try{
+    const count = items.filter(i=>i.category_id===id).length;
+    if(count>0){
+      await apiUpdateWhere("items", `category_id=eq.${encodeURIComponent(id)}`, { category_id: null });
+      items = items.map(i=> i.category_id===id ? {...i, category_id:null} : i);
+    }
+    await apiDelete("categories", id);
+    categories = categories.filter(c=>c.id!==id);
+    if(activeCat===id) activeCat = "all";
+    render();
+    openCategoryManagerModal();
+  }catch(err){
+    alert("삭제에 실패했습니다: " + err.message);
+    console.error(err);
   }
-  await apiDelete("categories", id);
-  categories = categories.filter(c=>c.id!==id);
-  if(activeCat===id) activeCat = "all";
-  render();
-  openCategoryManagerModal();
 }
 
 function closeAllModals(){
@@ -453,11 +503,35 @@ function render(){
   if(fabAdd) fabAdd.addEventListener("click", ()=> openNewItemModal(selectedDate));
 }
 
+function collectCalendarEvents(scopedItems){
+  const events = [];
+  scopedItems.forEach(item=>{
+    if(item.date){
+      events.push({
+        parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+        date: item.date, all_day: item.all_day, time: item.time, location: item.location||"",
+        assignees: item.assignees||[], status: item.status, isSub:false, item,
+      });
+    }
+    (item.logs||[]).forEach(log=>{
+      if(log.date){
+        events.push({
+          parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: log.subtitle||"",
+          date: log.date, all_day: log.all_day, time: log.time, location: log.location||"",
+          assignees: log.assignees||[], status: item.status, isSub:true, item, log,
+        });
+      }
+    });
+  });
+  return events;
+}
+
 function renderMainBody(overdueInProgress){
   const body = document.getElementById("main-body");
   if(viewMode==="calendar"){
     const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
-    const agendaItems = selectedDate ? scoped.filter(i=>i.date===selectedDate) : [];
+    const events = collectCalendarEvents(scoped);
+    const agendaItems = selectedDate ? events.filter(e=>e.date===selectedDate) : [];
     const agendaLabel = selectedDate ? fmtDate(selectedDate) : "";
 
     body.innerHTML = renderCalendarHTML() + `
@@ -514,8 +588,9 @@ function renderCalendarHTML(){
   const daysInMonth = new Date(year, month+1, 0).getDate();
   const todayISO = toISODate(new Date());
   const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+  const events = collectCalendarEvents(scoped);
   const byDate = {};
-  scoped.forEach(i=>{ if(!i.date) return; (byDate[i.date] = byDate[i.date]||[]).push(i); });
+  events.forEach(e=>{ (byDate[e.date] = byDate[e.date]||[]).push(e); });
 
   let cells = "";
   for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
@@ -524,11 +599,11 @@ function renderCalendarHTML(){
     const dayItems = byDate[iso] || [];
     const isToday = iso===todayISO;
     const isSelected = iso===selectedDate;
-    const dotsHtml = dayItems.slice(0,5).map(it=>
-      `<span class="cal-dot" style="background:${catById(it.category_id).color}"></span>`
+    const dotsHtml = dayItems.slice(0,5).map(e=>
+      `<span class="cal-dot" style="background:${catById(e.categoryId).color}"></span>`
     ).join("");
-    const chipsHtml = dayItems.slice(0,3).map(it=>
-      `<div class="cal-chip" style="background:${catById(it.category_id).color}" data-action="open-item" data-id="${it.id}">${esc(it.title)}</div>`
+    const chipsHtml = dayItems.slice(0,3).map(e=>
+      `<div class="cal-chip" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}">${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`
     ).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
@@ -551,31 +626,32 @@ function renderCalendarHTML(){
   `;
 }
 
-function renderAgendaCardHTML(item){
-  const cat = catById(item.category_id);
-  const lastLog = item.logs && item.logs.length ? item.logs[item.logs.length-1] : null;
+function renderAgendaCardHTML(ev){
+  const cat = catById(ev.categoryId);
+  const displayTitle = ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title;
+  const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
   return `
-    <div class="agenda-card" style="border-left:4px solid ${cat.color}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${item.id}">
+    <div class="agenda-card" style="border-left:4px solid ${cat.color}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${ev.parentId}">
       <div class="agenda-mobile">
         <div class="flex items-center gap-2 mb-1 flex-wrap">
           <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-          ${item.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
-          ${item.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
+          ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
+          ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
         </div>
-        <p class="font-display text-base font-semibold text-ink mb-1">${esc(item.title)}${item.location ? ` - ${esc(item.location)}` : ""}</p>
-        <p class="text-sm text-muted font-mono mb-1">${whenLabel(item)}</p>
-        ${lastLog ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(lastLog.content)}</p>` : ""}
-        ${item.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${item.assignees.map(esc).join(", ")}</p>` : ""}
+        <p class="font-display text-base font-semibold text-ink mb-1">${esc(displayTitle)}${ev.location ? ` - ${esc(ev.location)}` : ""}</p>
+        <p class="text-sm text-muted font-mono mb-1">${whenLabel(ev)}</p>
+        ${preview ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(preview)}</p>` : ""}
+        ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(esc).join(", ")}</p>` : ""}
       </div>
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-        <span class="font-display text-base font-semibold text-ink shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;">${esc(item.title)}</span>
-        ${lastLog ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(lastLog.content)}</span>` : `<span style="flex:1;"></span>`}
-        <span class="text-sm text-muted font-mono shrink-0">${whenLabel(item)}</span>
-        ${item.location ? `<span class="text-sm text-faint shrink-0">📍 ${esc(item.location)}</span>` : ""}
-        ${item.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${item.assignees.map(esc).join(", ")}</span>` : ""}
-        ${item.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>` : ""}
-        ${item.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : ""}
+        <span class="font-display text-base font-semibold text-ink shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;">${esc(displayTitle)}</span>
+        ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
+        <span class="text-sm text-muted font-mono shrink-0">${whenLabel(ev)}</span>
+        ${ev.location ? `<span class="text-sm text-faint shrink-0">📍 ${esc(ev.location)}</span>` : ""}
+        ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(esc).join(", ")}</span>` : ""}
+        ${ev.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>` : ""}
+        ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : ""}
       </div>
     </div>
   `;
