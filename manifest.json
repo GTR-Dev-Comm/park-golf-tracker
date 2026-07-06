@@ -1,6 +1,6 @@
 {
-  "name": "진행기록",
-  "short_name": "진행기록",
+  "name": "지티알업무캘린더",
+  "short_name": "지티알업무캘린더",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#FFFFFF",
