@@ -70,7 +70,7 @@
   .label{ display:block; font-size:12px; font-weight:600; color:var(--c-muted); margin-bottom:6px; }
 
   #password-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  #password-box{ width:100%; max-width:320px; text-align:center; }
+  #password-box{ width:100%; max-width:340px; text-align:center; }
   #app{ min-height:100vh; }
 
   header.topbar{ position:sticky; top:0; z-index:20; background:rgba(255,255,255,0.95); backdrop-filter:blur(6px); border-bottom:1px solid var(--c-border); }
@@ -145,7 +145,10 @@
       </label>
       <p id="login-error" class="text-xs text-danger mb-2 hidden"></p>
       <button id="login-submit" class="btn-forest w-full mb-3">로그인</button>
-      <button id="go-register" type="button" class="text-xs text-muted" style="text-decoration:underline;">처음이신가요? 회원가입</button>
+      <div class="flex items-center justify-between">
+        <button id="go-register" type="button" class="text-xs text-muted" style="text-decoration:underline;">처음이신가요? 회원가입</button>
+        <button id="go-reset" type="button" class="text-xs text-muted" style="text-decoration:underline;">비밀번호를 잊으셨나요?</button>
+      </div>
     </div>
 
     <div id="register-view" class="hidden">
@@ -157,6 +160,17 @@
       <p id="register-success" class="text-xs text-done mb-2 hidden">가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있어요.</p>
       <button id="register-submit" class="btn-forest w-full mb-3">가입 신청</button>
       <button id="go-login" type="button" class="text-xs text-muted" style="text-decoration:underline;">로그인 화면으로</button>
+    </div>
+
+    <div id="reset-view" class="hidden">
+      <p class="text-sm text-muted mb-3">이름과 가입 시 등록한 전화번호로 본인 확인 후 새 비밀번호를 설정하세요</p>
+      <input id="reset-name" class="input mb-2" placeholder="이름" autocomplete="off" />
+      <input id="reset-phone" class="input mb-2" placeholder="가입 시 등록한 전화번호" autocomplete="off" />
+      <input id="reset-password" type="password" class="input mb-2" placeholder="새 비밀번호" autocomplete="off" />
+      <p id="reset-error" class="text-xs text-danger mb-2 hidden"></p>
+      <p id="reset-success" class="text-xs text-done mb-2 hidden">비밀번호가 변경되었습니다. 로그인해 주세요.</p>
+      <button id="reset-submit" class="btn-forest w-full mb-3">비밀번호 변경</button>
+      <button id="go-login-2" type="button" class="text-xs text-muted" style="text-decoration:underline;">로그인 화면으로</button>
     </div>
   </div>
 </div>
@@ -1484,6 +1498,16 @@ async function rejectAppUser(id){
   }
 }
 
+async function resetAppUserPassword(id, newPassword){
+  try{
+    await apiUpdate("app_users", id, { password: newPassword });
+    alert("비밀번호가 재설정되었습니다.");
+  }catch(e){
+    alert("재설정에 실패했습니다: " + e.message);
+    console.error(e);
+  }
+}
+
 async function openUserManagerModal(isRefresh){
   closeAllModals();
   const backdrop = document.createElement("div");
@@ -1533,13 +1557,22 @@ async function openUserManagerModal(isRefresh){
               <p class="text-sm font-medium text-ink">${esc(u.name)}${u.name===MASTER_NAME ? " (마스터)" : ""}</p>
               <p class="text-xs text-faint">${esc(u.phone||"")}</p>
             </div>
-            ${u.name!==MASTER_NAME ? `<button type="button" class="btn-soft" style="padding:6px 12px;font-size:13px;color:var(--c-danger);" data-reject="${u.id}">삭제</button>` : ""}
+            <div class="flex gap-2">
+              <button type="button" class="btn-soft" style="padding:6px 12px;font-size:13px;" data-resetpw="${u.id}" data-name="${esc(u.name)}">비밀번호 재설정</button>
+              ${u.name!==MASTER_NAME ? `<button type="button" class="btn-soft" style="padding:6px 12px;font-size:13px;color:var(--c-danger);" data-reject="${u.id}">삭제</button>` : ""}
+            </div>
           </div>
         `).join("")}
       </div>
     `;
     listEl.querySelectorAll("[data-approve]").forEach(b=>{
       b.addEventListener("click", ()=> approveAppUser(b.dataset.approve));
+    });
+    listEl.querySelectorAll("[data-resetpw]").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const newPw = prompt(`${b.dataset.name}님의 새 비밀번호를 입력하세요:`);
+        if(newPw && newPw.trim()) resetAppUserPassword(b.dataset.resetpw, newPw.trim());
+      });
     });
     listEl.querySelectorAll("[data-reject]").forEach(b=>{
       b.addEventListener("click", ()=>{
@@ -1617,6 +1650,41 @@ document.getElementById("go-login").addEventListener("click", ()=>{
   document.getElementById("register-view").classList.add("hidden");
   document.getElementById("login-view").classList.remove("hidden");
 });
+document.getElementById("go-reset").addEventListener("click", ()=>{
+  document.getElementById("login-view").classList.add("hidden");
+  document.getElementById("reset-view").classList.remove("hidden");
+});
+document.getElementById("go-login-2").addEventListener("click", ()=>{
+  document.getElementById("reset-view").classList.add("hidden");
+  document.getElementById("login-view").classList.remove("hidden");
+});
+
+async function submitResetPassword(){
+  const name = document.getElementById("reset-name").value.trim();
+  const phone = document.getElementById("reset-phone").value.trim();
+  const newPassword = document.getElementById("reset-password").value;
+  const errEl = document.getElementById("reset-error");
+  const okEl = document.getElementById("reset-success");
+  errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+  if(!name || !phone || !newPassword){ errEl.textContent = "이름, 전화번호, 새 비밀번호를 모두 입력해주세요."; errEl.classList.remove("hidden"); return; }
+  try{
+    const rows = await apiGet("app_users", `&name=eq.${encodeURIComponent(name)}`);
+    const user = rows[0];
+    if(!user){ errEl.textContent = "등록되지 않은 이름입니다."; errEl.classList.remove("hidden"); return; }
+    if(!user.phone || user.phone.trim() !== phone){ errEl.textContent = "이름 또는 전화번호가 가입 정보와 일치하지 않습니다."; errEl.classList.remove("hidden"); return; }
+    await apiUpdate("app_users", user.id, { password: newPassword });
+    okEl.classList.remove("hidden");
+    document.getElementById("reset-name").value = "";
+    document.getElementById("reset-phone").value = "";
+    document.getElementById("reset-password").value = "";
+  }catch(e){
+    errEl.textContent = "처리 중 오류가 발생했습니다.";
+    errEl.classList.remove("hidden");
+    console.error(e);
+  }
+}
+document.getElementById("reset-submit").addEventListener("click", submitResetPassword);
 
 async function loadApprovedUsers(){
   try{
