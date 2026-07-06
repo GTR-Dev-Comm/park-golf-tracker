@@ -133,6 +133,21 @@ const APP_USERS = [
   { name: "mcjjang", password: "mcjjang8560" },
   { name: "김재욱", password: "8879" },
 ];
+
+const SUGGESTED_ASSIGNEES = {
+  "김재욱": ["장관섭"],
+};
+
+function renderAssigneeSuggestions(container, assignees, onAdd){
+  const suggestions = (SUGGESTED_ASSIGNEES[currentUser] || []).filter(n=>!assignees.includes(n));
+  if(suggestions.length===0){ container.innerHTML = ""; return; }
+  container.innerHTML = suggestions.map(n=>
+    `<button type="button" class="chip suggest-assignee" data-name="${esc(n)}" style="color:var(--c-muted);">＋ ${esc(n)}</button>`
+  ).join("");
+  container.querySelectorAll(".suggest-assignee").forEach(btn=>{
+    btn.addEventListener("click", ()=> onAdd(btn.dataset.name));
+  });
+}
 /* ================================================================== */
 /* 참고: 이 비밀번호는 화면 진입만 막는 간단한 잠금이고, 페이지 소스에 그대로 노출됩니다.
    1~2명만 아는 배포 링크 + 이 비밀번호 조합으로 충분한 용도(진짜 보안이 필요하면 서버 인증이 별도로 필요) */
@@ -905,7 +920,8 @@ function openNewItemModal(initialDate){
           <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
           <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
         </div>
-        <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
+        <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
+        <div class="flex flex-wrap gap-2 mb-3" id="assignee-suggestions"></div>
         <label class="label">내용</label>
         <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="진행 내용을 입력하세요"></textarea>
       `;
@@ -940,7 +956,8 @@ function openNewItemModal(initialDate){
           <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
           <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
         </div>
-        <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
+        <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
+        <div class="flex flex-wrap gap-2 mb-3" id="assignee-suggestions"></div>
         <label class="label">내용 (선택)</label>
         <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
       `;
@@ -971,6 +988,10 @@ function openNewItemModal(initialDate){
       ).join("");
       backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
         b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
+      });
+      renderAssigneeSuggestions(backdrop.querySelector("#assignee-suggestions"), assignees, (name)=>{
+        if(!assignees.includes(name)) assignees.push(name);
+        renderAssigneeChips();
       });
     }
     renderAssigneeChips();
@@ -1063,7 +1084,8 @@ function openEditItemModal(item){
         <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
         <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
       </div>
-      <div class="flex flex-wrap gap-2 mb-4" id="assignee-chips"></div>
+      <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
+      <div class="flex flex-wrap gap-2 mb-4" id="assignee-suggestions"></div>
       <div class="flex gap-2">
         <button type="button" class="btn-soft flex-1" data-action="close-modal">취소</button>
         <button class="btn-forest flex-1" id="f-submit">저장</button>
@@ -1092,6 +1114,10 @@ function openEditItemModal(item){
     ).join("");
     backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
       b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
+    });
+    renderAssigneeSuggestions(backdrop.querySelector("#assignee-suggestions"), assignees, (name)=>{
+      if(!assignees.includes(name)) assignees.push(name);
+      renderAssigneeChips();
     });
   }
   renderAssigneeChips();
