@@ -275,10 +275,13 @@ function fmtDate(d){ if(!d) return ""; return new Date(d).toLocaleDateString("ko
 function fmtDateTime(d){ return new Date(d).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }
 function daysUntil(d){ if(!d) return null; const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d); x.setHours(0,0,0,0); return Math.round((x-t)/86400000); }
 function hasFollowUp(item){
-  if(!item.date) return false;
-  const dueEnd = new Date(item.date);
-  dueEnd.setHours(23,59,59,999);
-  return (item.logs||[]).some(l => new Date(l.created_at).getTime() > dueEnd.getTime());
+  const logs = item.logs || [];
+  if(logs.length===0) return false;
+  // 로그가 1개뿐이면(최초 등록 시 같이 적은 메모) 후속 기록으로 보지 않음
+  if(logs.length===1) return false;
+  const createdAt = new Date(item.created_at).getTime();
+  // 건이 처음 만들어진 시각보다 1분 이상 나중에 추가된 기록이 있으면 "후속 기록 있음"으로 판단
+  return logs.some(l => new Date(l.created_at).getTime() > createdAt + 60000);
 }
 function whenLabel(item){ if(!item.date) return ""; return item.all_day===false && item.time ? `${fmtDate(item.date)} · ${item.time}` : fmtDate(item.date); }
 function catById(id){ return categories.find(c=>c.id===id) || {name:"미분류", color:"#999"}; }
