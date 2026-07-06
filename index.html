@@ -260,13 +260,14 @@ async function createItem(payload){
     id: uid("item"),
     category_id: payload.categoryId,
     title: payload.title,
+    subtitle: payload.subtitle || "",
     status: "진행중",
     assignees: payload.assignees || [],
     date: payload.date || null,
     all_day: payload.allDay,
     time: payload.allDay ? "" : payload.time,
     location: payload.location || "",
-    linked_case_id: payload.linkedCaseId || null,
+    linked_case_id: null,
     converted_from: null,
     reminder_time: "",
     reminders: payload.reminders || [],
@@ -276,16 +277,32 @@ async function createItem(payload){
   };
   const created = await apiInsert("items", row);
   items = [created, ...items];
-
-  if(payload.linkedCaseId){
-    const parent = items.find(i=>i.id===payload.linkedCaseId);
-    if(parent){
-      const newLogs = [...parent.logs, { id: uid("log"), author:"시스템", content:`🔗 연결된 새 건 등록: [${catById(created.category_id).name}] ${created.title}${created.date ? ` (${whenLabel(created)})` : ""}`, created_at: now }];
-      const updated = await apiUpdate("items", parent.id, { logs: newLogs, updated_at: now });
-      items = items.map(i=>i.id===updated.id?updated:i);
-    }
-  }
   selectedItemId = created.id;
+  closeAllModals();
+  render();
+}
+
+async function addSubEntry(parentId, payload){
+  const parent = items.find(i=>i.id===parentId);
+  if(!parent) return;
+  const now = new Date().toISOString();
+  const entry = {
+    id: uid("log"),
+    author: "나",
+    subtitle: payload.subtitle || "",
+    date: payload.date || null,
+    all_day: payload.allDay,
+    time: payload.allDay ? "" : payload.time,
+    location: payload.location || "",
+    reminders: payload.reminders || [],
+    assignees: payload.assignees || [],
+    content: payload.content || "",
+    created_at: now,
+  };
+  const newLogs = [...(parent.logs||[]), entry];
+  const updated = await apiUpdate("items", parentId, { logs: newLogs, updated_at: now });
+  items = items.map(i=>i.id===updated.id?updated:i);
+  selectedItemId = updated.id;
   closeAllModals();
   render();
 }
@@ -321,7 +338,7 @@ async function convertToProgress(itemId){
 async function updateItem(itemId, patch){
   const now = new Date().toISOString();
   const row = {
-    category_id: patch.categoryId, title: patch.title, date: patch.date || null,
+    category_id: patch.categoryId, title: patch.title, subtitle: patch.subtitle || "", date: patch.date || null,
     all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
     reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
   };
@@ -369,6 +386,16 @@ async function deleteCategory(id){
 
 function closeAllModals(){
   document.querySelectorAll(".modal-backdrop").forEach(el=>el.remove());
+}
+
+// 배경(backdrop)에서 mousedown과 click(mouseup)이 모두 배경 위에서 일어났을 때만 닫음.
+// (모달 안에서 텍스트를 드래그해서 선택하다가 배경 위에서 마우스를 떼는 경우 실수로 닫히는 것을 방지)
+function setupBackdropClose(backdrop, onClose){
+  let downOnBackdrop = false;
+  backdrop.addEventListener("mousedown", (e)=>{ downOnBackdrop = (e.target===backdrop); });
+  backdrop.addEventListener("click", (e)=>{
+    if(e.target===backdrop && downOnBackdrop){ (onClose||(()=>backdrop.remove()))(); }
+  });
 }
 
 /* ==================== RENDER ==================== */
@@ -633,6 +660,7 @@ function renderDetailPage(){
               ${item.converted_from ? `<span class="text-11 font-mono text-faint">원래: ${esc(catById(item.converted_from).name)}</span>` : ""}
             </div>
             <h2 class="font-display text-xl font-semibold mt-2 mb-2">${esc(item.title)}</h2>
+            ${item.subtitle ? `<p class="text-sm text-muted mb-2">${esc(item.subtitle)}</p>` : ""}
             <div class="flex flex-wrap items-center gap-2 text-xs mb-2">
               ${["진행중","완료","보류"].map(s=>`<button class="chip ${item.status===s?"active":""}" data-action="set-status" data-status="${s}">${s}</button>`).join("")}
             </div>
@@ -658,7 +686,14 @@ function renderDetailPage(){
                     <div class="relative">
                       <div style="position:absolute;left:-16px;top:6px;width:10px;height:10px;border-radius:999px;background:var(--c-gold);border:2px solid #fff;"></div>
                       <div class="text-11 font-mono text-faint mb-1">${fmtDateTime(log.created_at)} · ${esc(log.author)}</div>
-                      <p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>
+                      ${log.subtitle ? `<p class="font-display text-sm font-semibold text-ink mb-1">${esc(log.subtitle)}</p>` : ""}
+                      ${(log.date || log.location || log.assignees?.length) ? `
+                        <p class="text-xs text-muted font-mono mb-1">
+                          ${log.date ? `🕒 ${log.all_day===false && log.time ? `${fmtDate(log.date)} · ${log.time}` : fmtDate(log.date)}` : ""}
+                          ${log.location ? ` &nbsp; 📍 ${esc(log.location)}` : ""}
+                          ${log.assignees?.length ? ` &nbsp; 👤 ${log.assignees.map(esc).join(", ")}` : ""}
+                        </p>` : ""}
+                      ${log.content ? `<p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>` : ""}
                     </div>
                   `).join("")}
                 </div>
@@ -702,7 +737,6 @@ function bindDetailEvents(item){
 /* ---------- 새 건 등록 모달 ---------- */
 function openNewItemModal(initialDate){
   closeAllModals();
-  let linkedCase = null;
   const defaultCat = categories[0]?.id || "";
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
@@ -712,131 +746,192 @@ function openNewItemModal(initialDate){
         <h3 class="font-display text-lg font-semibold">새 건 등록</h3>
         <button data-action="close-modal">✕</button>
       </div>
-      <label class="label">카테고리</label>
-      <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
-        ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}" style="color:${c.color}">${esc(c.name)}</button>`).join("")}
-      </div>
-      <label class="label">큰제목</label>
-      <input id="f-title" class="input mb-3" placeholder="예: OO골프장 미팅" />
-      <div class="flex items-center justify-between mb-2">
-        <label class="label" style="margin-bottom:0;">날짜</label>
-        <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
-      </div>
-      <div class="flex gap-2 mb-3">
-        <input type="date" id="f-date" class="input" value="${initialDate || toISODate(new Date())}" />
-        <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
-      </div>
-      <label class="label">장소 (선택)</label>
-      <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
-      <label class="label">알림 (선택, 여러 개 추가 가능)</label>
-      <div id="reminder-editor" class="mb-3">
-        <div class="reminder-rows"></div>
-        <button type="button" class="btn-soft rem-add">＋ 알림 추가</button>
-      </div>
-      <label class="label">공유할 사람 (선택)</label>
-      <div class="flex gap-2 mb-2">
-        <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
-        <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
-      </div>
-      <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
-      <div id="link-search-wrap"></div>
-      <label class="label">첫 진행 내용 (선택)</label>
-      <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
-      <button class="btn-forest w-full" id="f-submit">등록하기</button>
+      <label class="label">동일 제목의 건 찾기 (있으면 이어서 기록)</label>
+      <div id="case-search-wrap" class="mb-3"></div>
+      <div id="form-fields"></div>
+      <button class="btn-forest w-full" id="f-submit"></button>
     </div>
   `;
   document.body.appendChild(backdrop);
-  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  setupBackdropClose(backdrop);
   backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
 
+  let selectedParent = null;
   let selectedCategoryId = defaultCat;
   let assignees = [];
+  let reminderEditor = null;
 
-  function refreshCatPicker(){
-    backdrop.querySelectorAll(".cat-option").forEach(btn=>{
-      const c = categories.find(x=>x.id===btn.dataset.cat);
-      if(btn.dataset.cat===selectedCategoryId){ btn.style.background=c.color; btn.style.color="#fff"; btn.style.borderColor="transparent"; }
-      else { btn.style.background="#fff"; btn.style.color=c.color; btn.style.borderColor="var(--c-border)"; }
-    });
-    renderLinkSearch();
-  }
-  backdrop.querySelectorAll(".cat-option").forEach(btn=>{
-    btn.addEventListener("click", ()=>{ selectedCategoryId = btn.dataset.cat; refreshCatPicker(); });
-  });
-
-  function renderAssigneeChips(){
-    backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
-      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
-    ).join("");
-    backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
-      b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
-    });
-  }
-  backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
-    const inp = backdrop.querySelector("#f-assignee-input");
-    const name = inp.value.trim();
-    if(name && !assignees.includes(name)) assignees.push(name);
-    inp.value = "";
-    renderAssigneeChips();
-  });
-  backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
-    if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
-  });
-
-  backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
-    backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
-  });
-
-  function renderLinkSearch(){
-    const wrap = backdrop.querySelector("#link-search-wrap");
-    if(selectedCategoryId===CAT_PROGRESS){ wrap.innerHTML=""; return; }
-    if(linkedCase){
+  function renderCaseSearch(){
+    const wrap = backdrop.querySelector("#case-search-wrap");
+    if(selectedParent){
       wrap.innerHTML = `
-        <label class="label">관련 진행사항에 연결</label>
-        <div class="flex items-center justify-between mb-3" style="background:var(--c-page);border:1px solid var(--c-border);border-radius:10px;padding:8px 12px;">
-          <span class="text-sm truncate">🔗 ${esc(linkedCase.title)}</span>
-          <button type="button" id="clear-link">✕</button>
+        <div class="flex items-center justify-between" style="background:var(--c-page);border:1px solid var(--c-border);border-radius:10px;padding:8px 12px;">
+          <span class="text-sm truncate">🔗 [${esc(catById(selectedParent.category_id).name)}] ${esc(selectedParent.title)}</span>
+          <button type="button" id="clear-parent">✕</button>
         </div>
       `;
-      wrap.querySelector("#clear-link").addEventListener("click", ()=>{ linkedCase=null; renderLinkSearch(); });
+      wrap.querySelector("#clear-parent").addEventListener("click", ()=>{ selectedParent=null; renderCaseSearch(); renderFormFields(); });
     } else {
       wrap.innerHTML = `
-        <label class="label">관련 진행사항에 연결 (선택)</label>
-        <input id="f-case-search" class="input mb-1" placeholder="진행사항 건 제목 검색" />
-        <div id="case-results" class="mb-3"></div>
+        <input id="f-case-search" class="input mb-1" placeholder="제목으로 검색 (예: 미국 견적서)" />
+        <div id="case-results"></div>
       `;
       wrap.querySelector("#f-case-search").addEventListener("input", (e)=>{
         const q = e.target.value.trim().toLowerCase();
         const results = document.getElementById("case-results");
         if(!q){ results.innerHTML=""; return; }
-        const matches = items.filter(i=>i.category_id===CAT_PROGRESS && i.title.toLowerCase().includes(q)).slice(0,5);
-        results.innerHTML = matches.map(m=>`<button type="button" class="w-full text-sm" style="text-align:left;padding:8px;border:1px solid var(--c-border);border-radius:8px;margin-top:4px;background:#fff;" data-id="${m.id}">${esc(m.title)}</button>`).join("");
+        const matches = items.filter(i=>i.title.toLowerCase().includes(q)).slice(0,6);
+        results.innerHTML = matches.map(m=>`<button type="button" class="w-full text-sm" style="text-align:left;padding:8px;border:1px solid var(--c-border);border-radius:8px;margin-top:4px;background:#fff;" data-id="${m.id}">[${esc(catById(m.category_id).name)}] ${esc(m.title)}</button>`).join("");
         results.querySelectorAll("button").forEach(b=>{
-          b.addEventListener("click", ()=>{ linkedCase = items.find(i=>i.id===b.dataset.id); renderLinkSearch(); });
+          b.addEventListener("click", ()=>{ selectedParent = items.find(i=>i.id===b.dataset.id); renderCaseSearch(); renderFormFields(); });
         });
       });
     }
   }
 
-  refreshCatPicker();
-  renderAssigneeChips();
-  const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
+  function renderFormFields(){
+    assignees = [];
+    const fieldsEl = backdrop.querySelector("#form-fields");
+    const dateVal = initialDate || toISODate(new Date());
+
+    if(selectedParent){
+      fieldsEl.innerHTML = `
+        <label class="label">소제목</label>
+        <input id="f-subtitle" class="input mb-3" placeholder="예: 2차 견적 발송" />
+        <div class="flex items-center justify-between mb-2">
+          <label class="label" style="margin-bottom:0;">날짜</label>
+          <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
+        </div>
+        <div class="flex gap-2 mb-3">
+          <input type="date" id="f-date" class="input" value="${dateVal}" />
+          <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
+        </div>
+        <label class="label">장소 (선택)</label>
+        <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
+        <label class="label">알림 (선택, 여러 개 추가 가능)</label>
+        <div id="reminder-editor" class="mb-3">
+          <div class="reminder-rows"></div>
+          <button type="button" class="btn-soft rem-add">＋ 알림 추가</button>
+        </div>
+        <label class="label">공유할 사람 (선택)</label>
+        <div class="flex gap-2 mb-2">
+          <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+          <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
+        <label class="label">내용</label>
+        <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="진행 내용을 입력하세요"></textarea>
+      `;
+      backdrop.querySelector("#f-submit").textContent = "이 건에 추가하기";
+    } else {
+      fieldsEl.innerHTML = `
+        <label class="label">카테고리</label>
+        <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
+          ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}" style="color:${c.color}">${esc(c.name)}</button>`).join("")}
+        </div>
+        <label class="label">제목</label>
+        <input id="f-title" class="input mb-3" placeholder="예: OO골프장 미팅" />
+        <label class="label">소제목 (선택)</label>
+        <input id="f-subtitle" class="input mb-3" placeholder="예: 1차 방문" />
+        <div class="flex items-center justify-between mb-2">
+          <label class="label" style="margin-bottom:0;">날짜</label>
+          <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
+        </div>
+        <div class="flex gap-2 mb-3">
+          <input type="date" id="f-date" class="input" value="${dateVal}" />
+          <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
+        </div>
+        <label class="label">장소 (선택)</label>
+        <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
+        <label class="label">알림 (선택, 여러 개 추가 가능)</label>
+        <div id="reminder-editor" class="mb-3">
+          <div class="reminder-rows"></div>
+          <button type="button" class="btn-soft rem-add">＋ 알림 추가</button>
+        </div>
+        <label class="label">공유할 사람 (선택)</label>
+        <div class="flex gap-2 mb-2">
+          <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+          <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
+        </div>
+        <div class="flex flex-wrap gap-2 mb-3" id="assignee-chips"></div>
+        <label class="label">내용 (선택)</label>
+        <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
+      `;
+      backdrop.querySelector("#f-submit").textContent = "등록하기";
+
+      const catPicker = backdrop.querySelector("#cat-picker");
+      function refreshCatPicker(){
+        catPicker.querySelectorAll(".cat-option").forEach(btn=>{
+          const c = categories.find(x=>x.id===btn.dataset.cat);
+          if(btn.dataset.cat===selectedCategoryId){ btn.style.background=c.color; btn.style.color="#fff"; btn.style.borderColor="transparent"; }
+          else { btn.style.background="#fff"; btn.style.color=c.color; btn.style.borderColor="var(--c-border)"; }
+        });
+      }
+      if(!selectedCategoryId) selectedCategoryId = defaultCat;
+      catPicker.querySelectorAll(".cat-option").forEach(btn=>{
+        btn.addEventListener("click", ()=>{ selectedCategoryId = btn.dataset.cat; refreshCatPicker(); });
+      });
+      refreshCatPicker();
+    }
+
+    backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
+      backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
+    });
+
+    function renderAssigneeChips(){
+      backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
+        `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+      ).join("");
+      backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
+        b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
+      });
+    }
+    renderAssigneeChips();
+    backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
+      const inp = backdrop.querySelector("#f-assignee-input");
+      const name = inp.value.trim();
+      if(name && !assignees.includes(name)) assignees.push(name);
+      inp.value = "";
+      renderAssigneeChips();
+    });
+    backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
+      if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
+    });
+
+    reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
+  }
+
+  renderCaseSearch();
+  renderFormFields();
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
-    const title = backdrop.querySelector("#f-title").value.trim();
-    if(!title || !selectedCategoryId) return;
-    createItem({
-      categoryId: selectedCategoryId,
-      title,
-      date: backdrop.querySelector("#f-date").value,
-      allDay: backdrop.querySelector("#f-allday").checked,
-      time: backdrop.querySelector("#f-time").value,
-      location: backdrop.querySelector("#f-location").value,
-      reminders: reminderEditor.get(),
-      assignees,
-      firstNote: backdrop.querySelector("#f-note").value,
-      linkedCaseId: linkedCase?.id || null,
-    });
+    if(selectedParent){
+      addSubEntry(selectedParent.id, {
+        subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
+        date: backdrop.querySelector("#f-date").value,
+        allDay: backdrop.querySelector("#f-allday").checked,
+        time: backdrop.querySelector("#f-time").value,
+        location: backdrop.querySelector("#f-location").value,
+        reminders: reminderEditor.get(),
+        assignees,
+        content: backdrop.querySelector("#f-note").value,
+      });
+    } else {
+      const title = backdrop.querySelector("#f-title").value.trim();
+      if(!title || !selectedCategoryId) return;
+      createItem({
+        categoryId: selectedCategoryId,
+        title,
+        subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
+        date: backdrop.querySelector("#f-date").value,
+        allDay: backdrop.querySelector("#f-allday").checked,
+        time: backdrop.querySelector("#f-time").value,
+        location: backdrop.querySelector("#f-location").value,
+        reminders: reminderEditor.get(),
+        assignees,
+        firstNote: backdrop.querySelector("#f-note").value,
+      });
+    }
   });
 }
 
@@ -857,8 +952,10 @@ function openEditItemModal(item){
       <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
         ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}">${esc(c.name)}</button>`).join("")}
       </div>
-      <label class="label">큰제목</label>
+      <label class="label">제목</label>
       <input id="f-title" class="input mb-3" value="${esc(item.title)}" />
+      <label class="label">소제목</label>
+      <input id="f-subtitle" class="input mb-3" value="${esc(item.subtitle||"")}" />
       <div class="flex items-center justify-between mb-2">
         <label class="label" style="margin-bottom:0;">날짜</label>
         <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" ${item.all_day!==false?"checked":""} /> 하루종일</label>
@@ -887,7 +984,7 @@ function openEditItemModal(item){
     </div>
   `;
   document.body.appendChild(backdrop);
-  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  setupBackdropClose(backdrop);
   backdrop.querySelectorAll('[data-action="close-modal"]').forEach(b=> b.addEventListener("click", ()=> backdrop.remove()));
 
   function refreshCatPicker(){
@@ -932,6 +1029,7 @@ function openEditItemModal(item){
     updateItem(item.id, {
       categoryId: selectedCategoryId,
       title,
+      subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
       date: backdrop.querySelector("#f-date").value,
       allDay: backdrop.querySelector("#f-allday").checked,
       time: backdrop.querySelector("#f-time").value,
@@ -966,7 +1064,7 @@ function openCategoryManagerModal(){
     </div>
   `;
   document.body.appendChild(backdrop);
-  backdrop.addEventListener("click", (e)=>{ if(e.target===backdrop) backdrop.remove(); });
+  setupBackdropClose(backdrop);
   backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", ()=> backdrop.remove());
 
   function renderCatList(){
