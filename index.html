@@ -735,9 +735,11 @@ function renderCalendarHTML(){
       <div class="cal-chips-desktop">${chipsHtml}${moreHtml}</div>
     </div>`;
   }
-
-  const totalCells = startWeekday + daysInMonth;
-  const rowCount = Math.ceil(totalCells / 7);
+  // 항상 6주(42칸)로 고정해서 달이 바뀌어도 칸 높이가 그대로 유지되게 함
+  const totalCellsSoFar = startWeekday + daysInMonth;
+  const totalSlots = 42;
+  for(let i=totalCellsSoFar; i<totalSlots; i++) cells += `<div class="cal-cell empty"></div>`;
+  const rowCount = 6;
 
   return `
     <div class="cal-grid mb-2">
