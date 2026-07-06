@@ -831,11 +831,13 @@ function renderDetailPage(){
 
   container.innerHTML = `
     <div class="fixed inset-0 bg-page z-30" style="display:flex;flex-direction:column;">
-      <div class="flex items-center justify-between px-4 py-3 border-b" style="background:rgba(255,255,255,0.95);">
-        <button data-action="close-detail" class="flex items-center gap-2 text-sm font-medium text-ink">← 일정 상세</button>
-        <div class="flex items-center gap-3">
-          <button data-action="edit-item" class="text-xs font-medium text-muted">수정</button>
-          <button data-action="delete-item-detail" class="text-danger">🗑</button>
+      <div class="border-b" style="background:rgba(255,255,255,0.95);">
+        <div class="flex items-center justify-between px-4 py-3 max-w mx-auto">
+          <button data-action="close-detail" class="flex items-center gap-2 font-medium text-ink" style="font-size:16px;padding:8px 4px;">← 일정 상세</button>
+          <div class="flex items-center gap-4">
+            <button data-action="edit-item" class="font-medium text-muted" style="font-size:15px;padding:8px 10px;">수정</button>
+            <button data-action="delete-item-detail" class="text-danger" style="font-size:20px;padding:8px 4px;">🗑</button>
+          </div>
         </div>
       </div>
       <div style="flex:1; overflow-y:auto;">
@@ -930,7 +932,7 @@ function openNewItemModal(initialDate){
     <div class="modal-panel">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-display text-lg font-semibold">새 건 등록</h3>
-        <button data-action="close-modal">✕</button>
+        <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
       </div>
       <label class="label">동일 제목의 건 찾기 (있으면 이어서 기록)</label>
       <div id="case-search-wrap" class="mb-3"></div>
@@ -1145,7 +1147,7 @@ function openEditItemModal(item){
     <div class="modal-panel">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-display text-lg font-semibold">건 수정</h3>
-        <button data-action="close-modal">✕</button>
+        <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
       </div>
       <label class="label">카테고리</label>
       <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
@@ -1303,7 +1305,7 @@ function openCategoryManagerModal(isRefresh){
     <div class="modal-panel" style="max-width:420px;">
       <div class="flex items-center justify-between mb-4">
         <h3 class="font-display text-lg font-semibold">카테고리 관리</h3>
-        <button data-action="close-modal">✕</button>
+        <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
       </div>
       <div id="cat-list" class="mb-4"></div>
       <div class="border-t" style="padding-top:16px;">
