@@ -23,7 +23,8 @@
     --c-border:#E3DFD3; --c-border-soft:#D3CEC0; --c-sheet:#FFFFFF; --c-done:#3F5F3F;
   }
   *{ box-sizing:border-box; }
-  body{ margin:0; font-family:'Inter', system-ui, sans-serif; font-weight:500; background:var(--c-page); color:var(--c-ink); }
+  html{ overflow-x:hidden; width:100%; }
+  body{ margin:0; font-family:'Inter', system-ui, sans-serif; font-weight:500; background:var(--c-page); color:var(--c-ink); overflow-x:hidden; width:100%; max-width:100vw; }
   .font-display{ font-family:'Fraunces', serif; }
   .font-mono{ font-family:'IBM Plex Mono', monospace; }
   button{ font-family:inherit; cursor:pointer; border:none; background:none; }
@@ -186,12 +187,12 @@ function minuteOptions(selected){
 function reminderRowHTML(r, idx){
   const [h,m] = (r.time||"09:00").split(":");
   return `
-    <div class="flex items-center gap-2 mb-2 reminder-row" data-idx="${idx}">
-      <select class="input rem-days" style="flex:1;">
+    <div class="flex items-center gap-2 mb-2 reminder-row" data-idx="${idx}" style="flex-wrap:wrap;">
+      <select class="input rem-days" style="flex:1;min-width:90px;">
         ${[0,1,2].map(d=>`<option value="${d}" ${r.daysBefore===d?"selected":""}>${DAYS_BEFORE_LABELS[d]}</option>`).join("")}
       </select>
-      <select class="input rem-hour" style="width:78px;">${hourOptions(h)}</select>
-      <select class="input rem-min" style="width:78px;">${minuteOptions(m)}</select>
+      <select class="input rem-hour" style="width:68px;">${hourOptions(h)}</select>
+      <select class="input rem-min" style="width:68px;">${minuteOptions(m)}</select>
       <button type="button" class="rem-remove text-faint" data-idx="${idx}">✕</button>
     </div>
   `;
