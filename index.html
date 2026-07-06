@@ -672,7 +672,7 @@ function renderMainBody(overdueInProgress){
     const agendaLabel = selectedDate ? fmtDate(selectedDate) : "";
 
     const incomplete = scoped.filter(i=>
-      i.status==="진행중" && i.date && daysUntil(i.date)<0 && !hasFollowUp(i)
+      i.status!=="완료" && i.date && daysUntil(i.date)<0 && !hasFollowUp(i)
     ).sort((a,b)=> new Date(a.date)-new Date(b.date));
 
     body.innerHTML = renderCalendarHTML() + `
