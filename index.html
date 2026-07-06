@@ -600,6 +600,14 @@ function render(){
   if(fabAdd) fabAdd.addEventListener("click", ()=> openNewItemModal(selectedDate));
 }
 
+function itemToEvent(item){
+  return {
+    parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+    date: item.date, all_day: item.all_day, time: item.time, location: item.location||"",
+    assignees: item.assignees||[], status: item.status, isSub:false, item,
+  };
+}
+
 function collectCalendarEvents(scopedItems){
   const events = [];
   scopedItems.forEach(item=>{
@@ -646,7 +654,7 @@ function renderMainBody(overdueInProgress){
       ${overdueInProgress.length>0 ? `
         <div class="mb-4" style="margin-top:20px;">
           <p class="flex items-center gap-1_5 text-xs font-mono text-danger mb-2">🔔 기한이 지났지만 진행중인 건 ${overdueInProgress.length}건 · 진행 기록을 남겨보세요</p>
-          <div>${overdueInProgress.map(renderItemRowHTML).join("")}</div>
+          <div>${overdueInProgress.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}</div>
         </div>` : ""}
       <div style="height:70px;"></div>
     `;
@@ -669,7 +677,7 @@ function renderMainBody(overdueInProgress){
             <div class="text-center text-faint" style="padding:48px 0;">
               <p class="font-display text-lg mb-1 text-ink">아직 기록이 없습니다</p>
               <p class="text-sm">우측 상단 "새 건"으로 첫 진행 건을 등록해보세요.</p>
-            </div>` : sorted.map(renderItemRowHTML).join("")}
+            </div>` : sorted.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}
         </div>
       </div>
     `;
@@ -727,13 +735,17 @@ function renderAgendaCardHTML(ev){
   const cat = catById(ev.categoryId);
   const displayTitle = ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title;
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
+  const deleteBtn = !ev.isSub ? `<button class="text-faint" data-action="delete-item" data-id="${ev.parentId}" title="삭제">🗑</button>` : "";
   return `
     <div class="agenda-card" style="border-left:4px solid ${cat.color}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${ev.parentId}">
       <div class="agenda-mobile">
-        <div class="flex items-center gap-2 mb-1 flex-wrap">
-          <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-          ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
-          ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
+        <div class="flex items-center justify-between mb-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+            ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
+            ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
+          </div>
+          ${deleteBtn}
         </div>
         <p class="font-display text-base font-semibold text-ink mb-1">${esc(displayTitle)}${ev.location ? ` - ${esc(ev.location)}` : ""}</p>
         <p class="text-sm text-muted font-mono mb-1">${whenLabel(ev)}</p>
@@ -749,6 +761,7 @@ function renderAgendaCardHTML(ev){
         ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(esc).join(", ")}</span>` : ""}
         ${ev.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>` : ""}
         ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : ""}
+        ${deleteBtn}
       </div>
     </div>
   `;
