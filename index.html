@@ -125,7 +125,10 @@
 /* ==================== 설정 (배포 전 여기만 수정) ==================== */
 const SUPABASE_URL = "https://hypqqmdieswabqiensed.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cHFxbWRpZXN3YWJxaWVuc2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTUzNTYsImV4cCI6MjA5ODgzMTM1Nn0.DPLUAn4pLGEVE035v4pFg9rLo9d9sFYf4MvVEm5vhuA";
-const APP_PASSWORD = "mcjjang8560";
+const APP_USERS = [
+  { name: "mcjjang", password: "mcjjang8560" },
+  { name: "김재욱", password: "8879" },
+];
 /* ================================================================== */
 /* 참고: 이 비밀번호는 화면 진입만 막는 간단한 잠금이고, 페이지 소스에 그대로 노출됩니다.
    1~2명만 아는 배포 링크 + 이 비밀번호 조합으로 충분한 용도(진짜 보안이 필요하면 서버 인증이 별도로 필요) */
@@ -272,7 +275,7 @@ async function createItem(payload){
       converted_from: null,
       reminder_time: "",
       reminders: payload.reminders || [],
-      logs: payload.firstNote ? [{ id: uid("log"), author:"나", content: payload.firstNote, created_at: now }] : [],
+      logs: payload.firstNote ? [{ id: uid("log"), author:currentUser, content: payload.firstNote, created_at: now }] : [],
       created_at: now,
       updated_at: now,
     };
@@ -294,7 +297,7 @@ async function addSubEntry(parentId, payload){
     const now = new Date().toISOString();
     const entry = {
       id: uid("log"),
-      author: "나",
+      author: currentUser,
       subtitle: payload.subtitle || "",
       date: payload.date || null,
       all_day: payload.allDay,
@@ -322,7 +325,7 @@ async function addLog(itemId, content){
     const item = items.find(i=>i.id===itemId);
     if(!item) return;
     const now = new Date().toISOString();
-    const newLogs = [...item.logs, { id: uid("log"), author:"나", content, created_at: now }];
+    const newLogs = [...item.logs, { id: uid("log"), author:currentUser, content, created_at: now }];
     const updated = await apiUpdate("items", itemId, { logs: newLogs, updated_at: now });
     items = items.map(i=>i.id===updated.id?updated:i);
     render();
@@ -1202,10 +1205,14 @@ function openCategoryManagerModal(){
 }
 
 /* ---------- 비밀번호 게이트 ---------- */
+let currentUser = "나";
 function checkPassword(){
   const input = document.getElementById("password-input").value;
-  if(input === APP_PASSWORD){
+  const matched = APP_USERS.find(u=>u.password===input);
+  if(matched){
     sessionStorage.setItem("ptk_authed", "1");
+    sessionStorage.setItem("ptk_user", matched.name);
+    currentUser = matched.name;
     startApp();
   } else {
     document.getElementById("password-error").classList.remove("hidden");
@@ -1248,7 +1255,10 @@ function startPolling(){
   }, 5000);
 }
 
-if(sessionStorage.getItem("ptk_authed")==="1"){ startApp(); }
+if(sessionStorage.getItem("ptk_authed")==="1"){
+  currentUser = sessionStorage.getItem("ptk_user") || "나";
+  startApp();
+}
 </script>
 </body>
 </html>
