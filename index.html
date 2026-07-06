@@ -1179,6 +1179,16 @@ function openEditItemModal(item){
         <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
       </div>
       <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
+
+      <div class="border-t" style="margin:16px 0 12px 0;padding-top:16px;">
+        <label class="label">진행 기록</label>
+        <div id="edit-log-timeline" class="mb-3"></div>
+        <div class="flex items-end gap-2 mb-3">
+          <textarea id="edit-log-draft" class="input" rows="2" style="resize:none;flex:1;" placeholder="진행 내용을 이어서 기록하세요…"></textarea>
+          <button type="button" class="btn-forest" id="edit-log-add" style="padding:10px 14px;">추가</button>
+        </div>
+      </div>
+
       <div class="flex gap-2">
         <button type="button" class="btn-soft flex-1" data-action="close-modal">취소</button>
         <button class="btn-forest flex-1" id="f-submit">저장</button>
@@ -1189,6 +1199,40 @@ function openEditItemModal(item){
   layerOpened();
   setupBackdropClose(backdrop, requestClose);
   backdrop.querySelectorAll('[data-action="close-modal"]').forEach(b=> b.addEventListener("click", requestClose));
+
+  function renderEditLogTimeline(){
+    const current = items.find(i=>i.id===item.id) || item;
+    const logs = current.logs || [];
+    const el = backdrop.querySelector("#edit-log-timeline");
+    if(logs.length===0){
+      el.innerHTML = `<p class="text-sm text-faint" style="padding:8px 0;">아직 진행 기록이 없습니다.</p>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="relative" style="padding-left:16px;max-height:220px;overflow-y:auto;">
+        <div style="position:absolute;left:5px;top:4px;bottom:4px;border-left:1px solid var(--c-border);"></div>
+        <div class="flex flex-col gap-3">
+          ${logs.map(log=>`
+            <div class="relative">
+              <div style="position:absolute;left:-16px;top:6px;width:10px;height:10px;border-radius:999px;background:var(--c-gold);border:2px solid #fff;"></div>
+              <div class="text-11 font-mono text-faint mb-1">${fmtDateTime(log.created_at)} · ${esc(log.author)}</div>
+              ${log.subtitle ? `<p class="font-display text-sm font-semibold text-ink mb-1">${esc(log.subtitle)}</p>` : ""}
+              ${log.content ? `<p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+  renderEditLogTimeline();
+  backdrop.querySelector("#edit-log-add").addEventListener("click", async ()=>{
+    const ta = backdrop.querySelector("#edit-log-draft");
+    const val = ta.value.trim();
+    if(!val) return;
+    await addLog(item.id, val);
+    ta.value = "";
+    renderEditLogTimeline();
+  });
 
   function refreshCatPicker(){
     backdrop.querySelectorAll(".cat-option").forEach(btn=>{
