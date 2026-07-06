@@ -209,6 +209,17 @@ function requestClose(){
   else { closeTopLayer(); }
 }
 
+function returnToCalendar(){
+  closeAllModals();
+  selectedItemId = null;
+  viewMode = "calendar";
+  render();
+  if(openLayers>0){
+    try{ history.go(-openLayers); }catch(e){}
+    openLayers = 0;
+  }
+}
+
 function closeTopLayer(){
   if(document.querySelector(".modal-backdrop")){
     closeAllModals();
@@ -359,11 +370,7 @@ async function createItem(payload){
     };
     const created = await apiInsert("items", row);
     items = [created, ...items];
-    selectedItemId = created.id;
-    closeAllModals();
-    render();
-    if(openLayers>0){ try{ history.replaceState({ openLayers }, ""); }catch(e){} }
-    else layerOpened();
+    returnToCalendar();
   }catch(err){
     alert("저장에 실패했습니다: " + err.message + "\n(Supabase 설정/마이그레이션 SQL을 확인해주세요)");
     console.error(err);
@@ -853,6 +860,7 @@ function renderDetailPage(){
               ${["진행중","완료","보류"].map(s=>`<button class="chip ${item.status===s?"active":""}" data-action="set-status" data-status="${s}">${s}</button>`).join("")}
             </div>
             <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
+              ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
               ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
               ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
@@ -1292,7 +1300,7 @@ function openEditItemModal(item){
       reminders: reminderEditor.get(),
       assignees,
     });
-    requestClose();
+    returnToCalendar();
   });
 }
 
