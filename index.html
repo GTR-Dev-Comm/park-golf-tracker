@@ -23,8 +23,10 @@
     --c-border:#E3DFD3; --c-border-soft:#D3CEC0; --c-sheet:#FFFFFF; --c-done:#3F5F3F;
   }
   *{ box-sizing:border-box; }
-  html{ overflow-x:hidden; width:100%; }
-  body{ margin:0; font-family:'Inter', system-ui, sans-serif; font-weight:500; background:var(--c-page); color:var(--c-ink); overflow-x:hidden; width:100%; max-width:100vw; }
+  html{ overflow-x:hidden; width:100%; height:100%; }
+  body{ margin:0; font-family:'Inter', system-ui, sans-serif; font-weight:500; background:var(--c-page); color:var(--c-ink); overflow-x:hidden; width:100%; max-width:100vw; height:100%; }
+  #app{ display:flex; flex-direction:column; min-height:100vh; }
+  .fill-col{ display:flex; flex-direction:column; flex:1; min-height:0; }
   .font-display{ font-family:'Fraunces', serif; }
   .font-mono{ font-family:'IBM Plex Mono', monospace; }
   button{ font-family:inherit; cursor:pointer; border:none; background:none; }
@@ -106,6 +108,14 @@
     .cal-chips-desktop{ display:block; margin-top:4px; overflow:hidden; max-height:56px; }
     .cal-chip{ font-size:11px; border-radius:4px; padding:2px 5px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .cal-chip-more{ font-size:10px; color:var(--c-faint); }
+
+    html, body{ height:100%; }
+    #app{ display:flex; flex-direction:column; min-height:100vh; }
+    .app-main.cal-mode{ flex:1; display:flex; flex-direction:column; min-height:0; }
+    .cal-mode-body{ flex:1; display:flex; flex-direction:column; min-height:0; }
+    .cal-mode-body .cal-grid{ flex:1; display:flex; flex-direction:column; min-height:0; }
+    .cal-mode-body .cal-body{ flex:1; }
+    .cal-mode-body .cal-cell{ height:auto; }
   }
   .fab-today{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#fff; border:1px solid var(--c-border); border-radius:999px; padding:10px 20px; font-size:14px; font-weight:600; box-shadow:0 2px 10px rgba(0,0,0,0.08); z-index:15; }
   .fab-add{ position:fixed; right:20px; bottom:20px; width:52px; height:52px; border-radius:999px; background:var(--c-forest); color:#fff; font-size:24px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(0,0,0,0.18); z-index:15; }
@@ -124,6 +134,9 @@
       <p class="text-sm text-muted mb-3">이름과 비밀번호로 로그인하세요</p>
       <input id="login-name" class="input mb-2" placeholder="이름" autocomplete="off" />
       <input id="login-password" type="password" class="input mb-2" placeholder="비밀번호" autocomplete="off" />
+      <label class="text-xs text-muted flex items-center gap-1 mb-2" style="justify-content:flex-start;">
+        <input type="checkbox" id="remember-me" /> 아이디/비밀번호 저장
+      </label>
       <p id="login-error" class="text-xs text-danger mb-2 hidden"></p>
       <button id="login-submit" class="btn-forest w-full mb-3">로그인</button>
       <button id="go-register" type="button" class="text-xs text-muted" style="text-decoration:underline;">처음이신가요? 회원가입</button>
@@ -200,7 +213,7 @@ let items = [];
 let activeCat = "all";
 let viewMode = "calendar";
 let monthCursor = new Date();
-let selectedDate = null;
+let selectedDate = (window.innerWidth < 768) ? toISODate(new Date()) : null;
 let selectedItemId = null;
 
 /* ---------- 안드로이드 하드웨어 뒤로가기 대응 ---------- */
@@ -585,12 +598,12 @@ function render(){
       </div>
     </header>
 
-    <main class="max-w mx-auto px-4 py-5">
+    <main class="max-w mx-auto px-4 py-5 app-main ${viewMode==="calendar"?"cal-mode":""}">
       <div class="flex items-center justify-end gap-1 mb-3">
         <button class="chip ${viewMode==="calendar"?"active":""}" data-action="set-view" data-view="calendar">📅 달력</button>
         <button class="chip ${viewMode==="list"?"active":""}" data-action="set-view" data-view="list">☰ 목록</button>
       </div>
-      <div id="main-body"></div>
+      <div id="main-body" class="${viewMode==="calendar"?"cal-mode-body":""}"></div>
     </main>
 
     ${viewMode==="calendar" ? `
@@ -723,6 +736,9 @@ function renderCalendarHTML(){
     </div>`;
   }
 
+  const totalCells = startWeekday + daysInMonth;
+  const rowCount = Math.ceil(totalCells / 7);
+
   return `
     <div class="cal-grid mb-2">
       <div class="cal-head">
@@ -731,7 +747,7 @@ function renderCalendarHTML(){
         <button data-action="next-month" class="text-muted">›</button>
       </div>
       <div class="cal-weekdays">${WEEKDAYS.map(w=>`<div>${w}</div>`).join("")}</div>
-      <div class="cal-body">${cells}</div>
+      <div class="cal-body" style="grid-template-rows:repeat(${rowCount},1fr);">${cells}</div>
     </div>
   `;
 }
@@ -1514,6 +1530,11 @@ async function checkLogin(){
     sessionStorage.setItem("ptk_authed", "1");
     sessionStorage.setItem("ptk_user", user.name);
     currentUser = user.name;
+    if(document.getElementById("remember-me").checked){
+      try{ localStorage.setItem("ptk_creds", JSON.stringify({ name, password })); }catch(e){}
+    } else {
+      try{ localStorage.removeItem("ptk_creds"); }catch(e){}
+    }
     startApp();
   }catch(e){
     errEl.textContent = "로그인 중 오류가 발생했습니다.";
@@ -1677,6 +1698,16 @@ function startPolling(){
 if(sessionStorage.getItem("ptk_authed")==="1"){
   currentUser = sessionStorage.getItem("ptk_user") || "나";
   startApp();
+} else {
+  try{
+    const saved = JSON.parse(localStorage.getItem("ptk_creds") || "null");
+    if(saved && saved.name && saved.password){
+      document.getElementById("login-name").value = saved.name;
+      document.getElementById("login-password").value = saved.password;
+      document.getElementById("remember-me").checked = true;
+      checkLogin();
+    }
+  }catch(e){ /* 저장된 값이 없거나 손상됨 - 무시 */ }
 }
 </script>
 </body>
