@@ -352,6 +352,7 @@ async function createItem(payload){
       reminder_time: "",
       reminders: payload.reminders || [],
       logs: payload.firstNote ? [{ id: uid("log"), author:currentUser, content: payload.firstNote, created_at: now }] : [],
+      created_by: currentUser,
       created_at: now,
       updated_at: now,
     };
@@ -1351,12 +1352,51 @@ async function startApp(){
   document.getElementById("app").classList.remove("hidden");
   try{
     await loadAll();
+    requestNotificationPermission();
     startPolling();
   }catch(err){
     document.getElementById("app").innerHTML = `<div style="padding:40px;text-align:center;color:var(--c-danger);">
       데이터를 불러오지 못했습니다. SUPABASE_URL / SUPABASE_ANON_KEY 설정을 확인해주세요.<br/><span style="font-size:12px;color:var(--c-faint);">${esc(err.message)}</span>
     </div>`;
   }
+}
+
+function requestNotificationPermission(){
+  if("Notification" in window && Notification.permission==="default"){
+    Notification.requestPermission();
+  }
+}
+
+function notify(title, body){
+  if("Notification" in window && Notification.permission==="granted"){
+    try{ new Notification(title, { body, icon: "icon-192.png" }); }catch(e){}
+  }
+}
+
+function detectAndNotifyChanges(prevItems, newItems){
+  const prevById = {};
+  prevItems.forEach(i=> prevById[i.id]=i);
+
+  newItems.forEach(ni=>{
+    const prev = prevById[ni.id];
+    if(!prev){
+      // 새로 생긴 건
+      if(ni.created_by && ni.created_by!==currentUser){
+        notify("새 건 등록", `${ni.created_by}님이 등록: [${catById(ni.category_id).name}] ${ni.title}`);
+      }
+      return;
+    }
+    // 기존 건에 새 진행 기록이 추가된 경우
+    const prevLogCount = (prev.logs||[]).length;
+    const newLogs = ni.logs||[];
+    if(newLogs.length>prevLogCount){
+      newLogs.slice(prevLogCount).forEach(log=>{
+        if(log.author && log.author!==currentUser){
+          notify("새 진행 기록", `${log.author}님: ${ni.title}${log.subtitle ? " · "+log.subtitle : ""}`);
+        }
+      });
+    }
+  });
 }
 
 function startPolling(){
@@ -1372,6 +1412,7 @@ function startPolling(){
       ]);
       const changed = JSON.stringify(newCats)!==JSON.stringify(categories) || JSON.stringify(newItems)!==JSON.stringify(items);
       if(changed){
+        detectAndNotifyChanges(items, newItems);
         categories = newCats;
         items = newItems;
         render();
