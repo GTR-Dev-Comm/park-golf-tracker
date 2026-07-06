@@ -373,11 +373,20 @@ async function apiUpdateWhere(table, filterQuery, patch){
   if(!r.ok) throw new Error(`UPDATE(where) ${table} failed`);
 }
 
+function isVisibleToMe(item){
+  if(!item.created_by) return true; // 작성자 정보가 없는 이전 건은 그대로 모두에게 표시
+  if(item.created_by === currentUser) return true; // 내가 등록한 건은 항상 보임
+  if(item.assignees && item.assignees.includes(currentUser)) return true; // 나에게 공유된 건
+  return false;
+}
+
 async function loadAll(){
-  [categories, items] = await Promise.all([
+  const [cats, allItems] = await Promise.all([
     apiGet("categories", "&order=created_at.asc"),
     apiGet("items", "&order=updated_at.desc"),
   ]);
+  categories = cats;
+  items = allItems.filter(isVisibleToMe);
   render();
 }
 
@@ -1711,10 +1720,11 @@ function startPolling(){
     const logDraftEl = document.getElementById("log-draft");
     if(logDraftEl && logDraftEl.value.trim()) return;
     try{
-      const [newCats, newItems] = await Promise.all([
+      const [newCats, rawItems] = await Promise.all([
         apiGet("categories", "&order=created_at.asc"),
         apiGet("items", "&order=updated_at.desc"),
       ]);
+      const newItems = rawItems.filter(isVisibleToMe);
       const changed = JSON.stringify(newCats)!==JSON.stringify(categories) || JSON.stringify(newItems)!==JSON.stringify(items);
       if(changed){
         // 실제 웹 푸시(서비스워커)가 알림을 담당하므로, 여기서 추가로 브라우저 알림을 띄우지 않음(중복 방지)
