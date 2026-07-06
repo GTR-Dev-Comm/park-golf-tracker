@@ -84,6 +84,9 @@
   @media (min-width:640px){ .modal-backdrop{ align-items:center; } }
   .modal-panel{ background:#fff; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; border-radius:16px 16px 0 0; padding:20px; }
   @media (min-width:640px){ .modal-panel{ border-radius:16px; } }
+  .assignee-dropdown{ position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--c-border); border-radius:8px; margin-top:4px; z-index:20; overflow:hidden; box-shadow:0 4px 10px rgba(0,0,0,0.08); }
+  .assignee-dropdown button{ display:block; width:100%; text-align:left; padding:8px 10px; font-size:13px; color:var(--c-ink); }
+  .assignee-dropdown button:hover{ background:var(--c-page); }
 
   .cal-grid{ border:1px solid var(--c-border); border-radius:14px; overflow:hidden; }
   .cal-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--c-border); }
@@ -136,17 +139,33 @@ const APP_USERS = [
 
 const SUGGESTED_ASSIGNEES = {
   "김재욱": ["장관섭"],
+  "mcjjang": ["김재욱"],
 };
 
-function renderAssigneeSuggestions(container, assignees, onAdd){
-  const suggestions = (SUGGESTED_ASSIGNEES[currentUser] || []).filter(n=>!assignees.includes(n));
-  if(suggestions.length===0){ container.innerHTML = ""; return; }
-  container.innerHTML = suggestions.map(n=>
-    `<button type="button" class="chip suggest-assignee" data-name="${esc(n)}" style="color:var(--c-muted);">＋ ${esc(n)}</button>`
-  ).join("");
-  container.querySelectorAll(".suggest-assignee").forEach(btn=>{
-    btn.addEventListener("click", ()=> onAdd(btn.dataset.name));
-  });
+// 담당자 입력창이 비어있는 상태로 포커스되면, 로그인한 사용자에 맞는 추천 이름을
+// 드롭다운으로 보여주고 클릭하면 바로 추가한다.
+function wireAssigneeSuggestions(inputEl, dropdownEl, getAssignees, onAdd){
+  function showIfEmpty(){
+    if(inputEl.value.trim()===""){
+      const suggestions = (SUGGESTED_ASSIGNEES[currentUser] || []).filter(n=>!getAssignees().includes(n));
+      if(suggestions.length>0){
+        dropdownEl.innerHTML = suggestions.map(n=>`<button type="button" data-name="${esc(n)}">${esc(n)}</button>`).join("");
+        dropdownEl.querySelectorAll("button").forEach(b=>{
+          b.addEventListener("mousedown", (e)=>{
+            e.preventDefault();
+            onAdd(b.dataset.name);
+            dropdownEl.classList.add("hidden");
+          });
+        });
+        dropdownEl.classList.remove("hidden");
+        return;
+      }
+    }
+    dropdownEl.classList.add("hidden");
+  }
+  inputEl.addEventListener("focus", showIfEmpty);
+  inputEl.addEventListener("input", showIfEmpty);
+  inputEl.addEventListener("blur", ()=> setTimeout(()=> dropdownEl.classList.add("hidden"), 150));
 }
 /* ================================================================== */
 /* 참고: 이 비밀번호는 화면 진입만 막는 간단한 잠금이고, 페이지 소스에 그대로 노출됩니다.
@@ -981,11 +1000,13 @@ function openNewItemModal(initialDate){
         </div>
         <label class="label">공유할 사람 (선택)</label>
         <div class="flex gap-2 mb-2">
-          <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+          <div style="position:relative;flex:1;">
+            <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" style="width:100%;" />
+            <div id="assignee-suggestions" class="assignee-dropdown hidden"></div>
+          </div>
           <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
         </div>
         <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
-        <div class="flex flex-wrap gap-2 mb-3" id="assignee-suggestions"></div>
         <label class="label">내용</label>
         <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="진행 내용을 입력하세요"></textarea>
       `;
@@ -1017,11 +1038,13 @@ function openNewItemModal(initialDate){
         </div>
         <label class="label">공유할 사람 (선택)</label>
         <div class="flex gap-2 mb-2">
-          <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+          <div style="position:relative;flex:1;">
+            <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" style="width:100%;" />
+            <div id="assignee-suggestions" class="assignee-dropdown hidden"></div>
+          </div>
           <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
         </div>
         <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
-        <div class="flex flex-wrap gap-2 mb-3" id="assignee-suggestions"></div>
         <label class="label">내용 (선택)</label>
         <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
       `;
@@ -1053,10 +1076,6 @@ function openNewItemModal(initialDate){
       backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
         b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
       });
-      renderAssigneeSuggestions(backdrop.querySelector("#assignee-suggestions"), assignees, (name)=>{
-        if(!assignees.includes(name)) assignees.push(name);
-        renderAssigneeChips();
-      });
     }
     renderAssigneeChips();
     backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
@@ -1069,6 +1088,12 @@ function openNewItemModal(initialDate){
     backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
       if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
     });
+    wireAssigneeSuggestions(
+      backdrop.querySelector("#f-assignee-input"),
+      backdrop.querySelector("#assignee-suggestions"),
+      ()=>assignees,
+      (name)=>{ if(!assignees.includes(name)) assignees.push(name); renderAssigneeChips(); }
+    );
 
     reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
   }
@@ -1145,11 +1170,13 @@ function openEditItemModal(item){
       </div>
       <label class="label">공유할 사람</label>
       <div class="flex gap-2 mb-2">
-        <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" />
+        <div style="position:relative;flex:1;">
+          <input id="f-assignee-input" class="input" placeholder="이름 입력 후 추가" style="width:100%;" />
+          <div id="assignee-suggestions" class="assignee-dropdown hidden"></div>
+        </div>
         <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
       </div>
       <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
-      <div class="flex flex-wrap gap-2 mb-4" id="assignee-suggestions"></div>
       <div class="flex gap-2">
         <button type="button" class="btn-soft flex-1" data-action="close-modal">취소</button>
         <button class="btn-forest flex-1" id="f-submit">저장</button>
@@ -1180,10 +1207,6 @@ function openEditItemModal(item){
     backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
       b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
     });
-    renderAssigneeSuggestions(backdrop.querySelector("#assignee-suggestions"), assignees, (name)=>{
-      if(!assignees.includes(name)) assignees.push(name);
-      renderAssigneeChips();
-    });
   }
   renderAssigneeChips();
   const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(item));
@@ -1194,6 +1217,12 @@ function openEditItemModal(item){
     inp.value = "";
     renderAssigneeChips();
   });
+  wireAssigneeSuggestions(
+    backdrop.querySelector("#f-assignee-input"),
+    backdrop.querySelector("#assignee-suggestions"),
+    ()=>assignees,
+    (name)=>{ if(!assignees.includes(name)) assignees.push(name); renderAssigneeChips(); }
+  );
   backdrop.querySelector("#f-assignee-input").addEventListener("keydown", (e)=>{
     if(e.key==="Enter"){ e.preventDefault(); backdrop.querySelector("#f-add-assignee").click(); }
   });
