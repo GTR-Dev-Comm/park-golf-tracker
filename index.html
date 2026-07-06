@@ -1494,7 +1494,7 @@ function startPolling(){
       ]);
       const changed = JSON.stringify(newCats)!==JSON.stringify(categories) || JSON.stringify(newItems)!==JSON.stringify(items);
       if(changed){
-        detectAndNotifyChanges(items, newItems);
+        // 실제 웹 푸시(서비스워커)가 알림을 담당하므로, 여기서 추가로 브라우저 알림을 띄우지 않음(중복 방지)
         categories = newCats;
         items = newItems;
         render();
