@@ -732,6 +732,18 @@ function renderMainBody(overdueInProgress){
       if(da!==db) return da-db;
       return new Date(b.updated_at)-new Date(a.updated_at);
     });
+
+    const groups = [];
+    let lastKey = null;
+    sorted.forEach(i=>{
+      const key = i.date ? `${new Date(i.date).getFullYear()}년 ${new Date(i.date).getMonth()+1}월` : "날짜 없음";
+      if(key !== lastKey){
+        groups.push({ key, items: [] });
+        lastKey = key;
+      }
+      groups[groups.length-1].items.push(i);
+    });
+
     body.innerHTML = `
       <div class="cal-grid">
         <div class="flex items-center gap-3 px-4 py-3 border-b">
@@ -743,7 +755,12 @@ function renderMainBody(overdueInProgress){
             <div class="text-center text-faint" style="padding:48px 0;">
               <p class="font-display text-lg mb-1 text-ink">아직 기록이 없습니다</p>
               <p class="text-sm">우측 상단 "새 건"으로 첫 진행 건을 등록해보세요.</p>
-            </div>` : sorted.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}
+            </div>` : groups.map(g => `
+              <div class="mb-4">
+                <p class="font-display text-sm font-semibold text-muted" style="padding:4px 0 8px 0;border-bottom:1px solid var(--c-border);margin-bottom:8px;">${g.key}</p>
+                ${g.items.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}
+              </div>
+            `).join("")}
         </div>
       </div>
     `;
