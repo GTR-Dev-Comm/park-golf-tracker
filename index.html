@@ -119,10 +119,26 @@
 <div id="password-screen">
   <div id="password-box">
     <h1 class="font-display text-lg font-semibold mb-3">업무공유</h1>
-    <p class="text-sm text-muted mb-3">비밀번호를 입력하세요</p>
-    <input id="password-input" type="password" class="input mb-2" autocomplete="off" />
-    <p id="password-error" class="text-xs text-danger mb-2 hidden">비밀번호가 올바르지 않습니다</p>
-    <button id="password-submit" class="btn-forest w-full">입장</button>
+
+    <div id="login-view">
+      <p class="text-sm text-muted mb-3">이름과 비밀번호로 로그인하세요</p>
+      <input id="login-name" class="input mb-2" placeholder="이름" autocomplete="off" />
+      <input id="login-password" type="password" class="input mb-2" placeholder="비밀번호" autocomplete="off" />
+      <p id="login-error" class="text-xs text-danger mb-2 hidden"></p>
+      <button id="login-submit" class="btn-forest w-full mb-3">로그인</button>
+      <button id="go-register" type="button" class="text-xs text-muted" style="text-decoration:underline;">처음이신가요? 회원가입</button>
+    </div>
+
+    <div id="register-view" class="hidden">
+      <p class="text-sm text-muted mb-3">회원가입 (가입 후 관리자 승인이 필요합니다)</p>
+      <input id="reg-name" class="input mb-2" placeholder="이름 (로그인 아이디로 사용)" autocomplete="off" />
+      <input id="reg-phone" class="input mb-2" placeholder="전화번호" autocomplete="off" />
+      <input id="reg-password" type="password" class="input mb-2" placeholder="비밀번호" autocomplete="off" />
+      <p id="register-error" class="text-xs text-danger mb-2 hidden"></p>
+      <p id="register-success" class="text-xs text-done mb-2 hidden">가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있어요.</p>
+      <button id="register-submit" class="btn-forest w-full mb-3">가입 신청</button>
+      <button id="go-login" type="button" class="text-xs text-muted" style="text-decoration:underline;">로그인 화면으로</button>
+    </div>
   </div>
 </div>
 
@@ -133,22 +149,15 @@
 const SUPABASE_URL = "https://hypqqmdieswabqiensed.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cHFxbWRpZXN3YWJxaWVuc2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTUzNTYsImV4cCI6MjA5ODgzMTM1Nn0.DPLUAn4pLGEVE035v4pFg9rLo9d9sFYf4MvVEm5vhuA";
 const VAPID_PUBLIC_KEY = "BAJ51vJxOp5Z8ZZBqN7f-Uhz2e2TXPVUXsX-h9Cc3M_SpLvDUyjJEh2d-n1XR2QEUH311UcMC5Vd3XWPFdvM6a0";
-const APP_USERS = [
-  { name: "mcjjang", password: "mcjjang8560" },
-  { name: "김재욱", password: "8879" },
-];
+const MASTER_NAME = "mcjjang";
+let approvedUsers = []; // 로그인 후 Supabase에서 불러오는, 승인된 다른 회원 이름 목록
 
-const SUGGESTED_ASSIGNEES = {
-  "김재욱": ["장관섭"],
-  "mcjjang": ["김재욱"],
-};
-
-// 담당자 입력창이 비어있는 상태로 포커스되면, 로그인한 사용자에 맞는 추천 이름을
+// 담당자 입력창이 비어있는 상태로 포커스되면, 승인된 다른 회원 이름을
 // 드롭다운으로 보여주고 클릭하면 바로 추가한다.
 function wireAssigneeSuggestions(inputEl, dropdownEl, getAssignees, onAdd){
   function showIfEmpty(){
     if(inputEl.value.trim()===""){
-      const suggestions = (SUGGESTED_ASSIGNEES[currentUser] || []).filter(n=>!getAssignees().includes(n));
+      const suggestions = approvedUsers.map(u=>u.name).filter(n=>n!==currentUser && !getAssignees().includes(n));
       if(suggestions.length>0){
         dropdownEl.innerHTML = suggestions.map(n=>`<button type="button" data-name="${esc(n)}">${esc(n)}</button>`).join("");
         dropdownEl.querySelectorAll("button").forEach(b=>{
@@ -572,6 +581,7 @@ function render(){
           return `<button class="chip" style="${activeStyle}" data-action="set-cat" data-cat="${c.id}">${esc(c.name)} ${count}</button>`;
         }).join("")}
         <button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-new-cat">🏷 카테고리</button>
+        ${currentUser===MASTER_NAME ? `<button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-user-manager">👤 회원 관리</button>` : ""}
       </div>
     </header>
 
@@ -651,11 +661,6 @@ function renderMainBody(overdueInProgress){
             : agendaItems.map(renderAgendaCardHTML).join("")}
         ` : ""}
       </div>
-      ${overdueInProgress.length>0 ? `
-        <div class="mb-4" style="margin-top:20px;">
-          <p class="flex items-center gap-1_5 text-xs font-mono text-danger mb-2">🔔 기한이 지났지만 진행중인 건 ${overdueInProgress.length}건 · 진행 기록을 남겨보세요</p>
-          <div>${overdueInProgress.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}</div>
-        </div>` : ""}
       <div style="height:70px;"></div>
     `;
   } else {
@@ -835,6 +840,8 @@ function attachGlobalHandlers(){
   if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
   const openNewCatBtn = document.querySelector('[data-action="open-new-cat"]');
   if(openNewCatBtn) openNewCatBtn.addEventListener("click", ()=> openCategoryManagerModal());
+  const openUserManagerBtn = document.querySelector('[data-action="open-user-manager"]');
+  if(openUserManagerBtn) openUserManagerBtn.addEventListener("click", ()=> openUserManagerModal());
   const prevMonth = document.querySelector('[data-action="prev-month"]');
   if(prevMonth) prevMonth.addEventListener("click", ()=>{ monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth()-1, 1); render(); });
   const nextMonth = document.querySelector('[data-action="next-month"]');
@@ -1398,28 +1405,171 @@ function openCategoryManagerModal(isRefresh){
   });
 }
 
-/* ---------- 비밀번호 게이트 ---------- */
-let currentUser = "나";
-function checkPassword(){
-  const input = document.getElementById("password-input").value;
-  const matched = APP_USERS.find(u=>u.password===input);
-  if(matched){
-    sessionStorage.setItem("ptk_authed", "1");
-    sessionStorage.setItem("ptk_user", matched.name);
-    currentUser = matched.name;
-    startApp();
-  } else {
-    document.getElementById("password-error").classList.remove("hidden");
+/* ---------- 회원 관리 모달 (마스터 전용: 가입 승인/거절) ---------- */
+async function approveAppUser(id){
+  try{
+    await apiUpdate("app_users", id, { approved: true });
+    await loadApprovedUsers();
+    openUserManagerModal(true);
+  }catch(e){
+    alert("승인 처리에 실패했습니다: " + e.message);
+    console.error(e);
   }
 }
-document.getElementById("password-submit").addEventListener("click", checkPassword);
-document.getElementById("password-input").addEventListener("keydown", (e)=>{ if(e.key==="Enter") checkPassword(); });
+
+async function rejectAppUser(id){
+  try{
+    await apiDelete("app_users", id);
+    await loadApprovedUsers();
+    openUserManagerModal(true);
+  }catch(e){
+    alert("처리에 실패했습니다: " + e.message);
+    console.error(e);
+  }
+}
+
+async function openUserManagerModal(isRefresh){
+  closeAllModals();
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:440px;">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display text-lg font-semibold">회원 관리</h3>
+        <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
+      </div>
+      <div id="user-list"><p class="text-sm text-faint">불러오는 중…</p></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  if(!isRefresh) layerOpened();
+  setupBackdropClose(backdrop, requestClose);
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", requestClose);
+
+  try{
+    const rows = await apiGet("app_users", "&order=created_at.desc");
+    const listEl = backdrop.querySelector("#user-list");
+    const pending = rows.filter(u=>!u.approved);
+    const approved = rows.filter(u=>u.approved);
+    listEl.innerHTML = `
+      ${pending.length>0 ? `
+        <p class="label" style="color:var(--c-danger);">승인 대기중 (${pending.length})</p>
+        <div class="mb-4">
+          ${pending.map(u=>`
+            <div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--c-border);">
+              <div>
+                <p class="text-sm font-medium text-ink">${esc(u.name)}</p>
+                <p class="text-xs text-faint">${esc(u.phone||"")}</p>
+              </div>
+              <div class="flex gap-2">
+                <button type="button" class="btn-forest" style="padding:6px 12px;font-size:13px;" data-approve="${u.id}">승인</button>
+                <button type="button" class="btn-soft" style="padding:6px 12px;font-size:13px;color:var(--c-danger);" data-reject="${u.id}">거절</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      <p class="label">승인된 회원 (${approved.length})</p>
+      <div>
+        ${approved.map(u=>`
+          <div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--c-border);">
+            <div>
+              <p class="text-sm font-medium text-ink">${esc(u.name)}${u.name===MASTER_NAME ? " (마스터)" : ""}</p>
+              <p class="text-xs text-faint">${esc(u.phone||"")}</p>
+            </div>
+            ${u.name!==MASTER_NAME ? `<button type="button" class="btn-soft" style="padding:6px 12px;font-size:13px;color:var(--c-danger);" data-reject="${u.id}">삭제</button>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    `;
+    listEl.querySelectorAll("[data-approve]").forEach(b=>{
+      b.addEventListener("click", ()=> approveAppUser(b.dataset.approve));
+    });
+    listEl.querySelectorAll("[data-reject]").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        if(confirm("이 회원을 삭제할까요?")) rejectAppUser(b.dataset.reject);
+      });
+    });
+  }catch(e){
+    backdrop.querySelector("#user-list").innerHTML = `<p class="text-sm text-danger">회원 목록을 불러오지 못했습니다.</p>`;
+    console.error(e);
+  }
+}
+
+/* ---------- 로그인 / 회원가입 ---------- */
+let currentUser = "나";
+
+async function checkLogin(){
+  const name = document.getElementById("login-name").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  errEl.classList.add("hidden");
+  if(!name || !password) return;
+  try{
+    const rows = await apiGet("app_users", `&name=eq.${encodeURIComponent(name)}`);
+    const user = rows[0];
+    if(!user){ errEl.textContent = "등록되지 않은 이름입니다."; errEl.classList.remove("hidden"); return; }
+    if(user.password !== password){ errEl.textContent = "비밀번호가 올바르지 않습니다."; errEl.classList.remove("hidden"); return; }
+    if(!user.approved){ errEl.textContent = "아직 관리자 승인 대기중입니다."; errEl.classList.remove("hidden"); return; }
+    sessionStorage.setItem("ptk_authed", "1");
+    sessionStorage.setItem("ptk_user", user.name);
+    currentUser = user.name;
+    startApp();
+  }catch(e){
+    errEl.textContent = "로그인 중 오류가 발생했습니다.";
+    errEl.classList.remove("hidden");
+    console.error(e);
+  }
+}
+
+async function submitRegister(){
+  const name = document.getElementById("reg-name").value.trim();
+  const phone = document.getElementById("reg-phone").value.trim();
+  const password = document.getElementById("reg-password").value;
+  const errEl = document.getElementById("register-error");
+  const okEl = document.getElementById("register-success");
+  errEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+  if(!name || !password){ errEl.textContent = "이름과 비밀번호를 입력해주세요."; errEl.classList.remove("hidden"); return; }
+  try{
+    await apiInsert("app_users", { name, phone, password, approved: false });
+    okEl.classList.remove("hidden");
+    document.getElementById("reg-name").value = "";
+    document.getElementById("reg-phone").value = "";
+    document.getElementById("reg-password").value = "";
+  }catch(e){
+    errEl.textContent = "이미 사용 중인 이름이거나, 가입 중 오류가 발생했습니다.";
+    errEl.classList.remove("hidden");
+    console.error(e);
+  }
+}
+
+document.getElementById("login-submit").addEventListener("click", checkLogin);
+document.getElementById("login-password").addEventListener("keydown", (e)=>{ if(e.key==="Enter") checkLogin(); });
+document.getElementById("login-name").addEventListener("keydown", (e)=>{ if(e.key==="Enter") checkLogin(); });
+document.getElementById("register-submit").addEventListener("click", submitRegister);
+document.getElementById("go-register").addEventListener("click", ()=>{
+  document.getElementById("login-view").classList.add("hidden");
+  document.getElementById("register-view").classList.remove("hidden");
+});
+document.getElementById("go-login").addEventListener("click", ()=>{
+  document.getElementById("register-view").classList.add("hidden");
+  document.getElementById("login-view").classList.remove("hidden");
+});
+
+async function loadApprovedUsers(){
+  try{
+    const rows = await apiGet("app_users", "&approved=eq.true&select=name,phone");
+    approvedUsers = rows || [];
+  }catch(e){ approvedUsers = []; }
+}
 
 async function startApp(){
   document.getElementById("password-screen").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
   try{
     await loadAll();
+    await loadApprovedUsers();
     requestNotificationPermission();
     startPolling();
   }catch(err){
