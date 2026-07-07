@@ -101,7 +101,7 @@
   .cal-cell.empty{ cursor:default; }
   .cal-dots{ display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:4px; }
   .cal-dot{ width:6px; height:6px; border-radius:999px; }
-  .cal-dot.private{ opacity:0.35; }
+  .cal-lock-icon{ font-size:8px; line-height:1; }
   .cal-chips-desktop{ display:none; }
   @media (min-width:768px){
     .cal-cell{ height:92px; min-height:0; padding:8px; text-align:left; }
@@ -790,7 +790,10 @@ function renderCalendarHTML(){
     const isSelected = iso===selectedDate;
     const dotsHtml = dayItems.slice(0,5).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
-      return `<span class="cal-dot ${shared?"":"private"}" style="background:${catById(e.categoryId).color}"></span>`;
+      if(shared){
+        return `<span class="cal-dot" style="background:${catById(e.categoryId).color}"></span>`;
+      }
+      return `<span class="cal-lock-icon">🔒</span>`;
     }).join("");
     const chipsHtml = dayItems.slice(0,3).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
