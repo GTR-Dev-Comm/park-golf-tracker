@@ -826,12 +826,17 @@ function renderAgendaCardHTML(ev, danger){
   const displayTitle = ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title;
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
   const deleteBtn = !ev.isSub ? `<button class="text-faint" data-action="delete-item" data-id="${ev.parentId}" title="삭제">🗑</button>` : "";
+  const isShared = ev.assignees && ev.assignees.length>0;
+  const sharedBadge = isShared
+    ? `<span class="text-11 font-mono" style="color:var(--c-forest);">🔗 공유됨</span>`
+    : `<span class="text-11 font-mono text-faint">🔒 비공개</span>`;
   return `
     <div class="agenda-card" style="border-left:4px solid ${borderColor}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${ev.parentId}">
       <div class="agenda-mobile">
         <div class="flex items-center justify-between mb-1">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+            ${sharedBadge}
             ${danger ? `<span class="text-11 font-mono text-danger">⏰ 미완료</span>` : ""}
             ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
             ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
@@ -845,6 +850,7 @@ function renderAgendaCardHTML(ev, danger){
       </div>
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+        ${sharedBadge}
         ${danger ? `<span class="text-11 font-mono text-danger shrink-0">⏰</span>` : ""}
         <span class="font-display text-base font-semibold shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;${titleColor}">${esc(displayTitle)}</span>
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
@@ -967,6 +973,7 @@ function renderDetailPage(){
               ${["진행중","완료","보류"].map(s=>`<button class="chip ${item.status===s?"active":""}" data-action="set-status" data-status="${s}">${s}</button>`).join("")}
             </div>
             <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
+              <span>${item.assignees?.length ? `🔗 공유됨` : `🔒 비공개 (본인만 볼 수 있음)`}</span>
               ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
               ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
