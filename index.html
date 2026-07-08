@@ -363,6 +363,40 @@ function createReminderEditor(container, initial){
   return { get: ()=>{ sync(); return reminders; } };
 }
 
+function createExtraDatesEditor(container, initial){
+  let dates = [...(initial||[])];
+  function extraDateRowHTML(d, idx){
+    return `
+      <div class="flex items-center gap-2 mb-2 extra-date-row" data-idx="${idx}">
+        <input type="date" class="input extra-date-input" value="${d||""}" style="flex:1;" />
+        <button type="button" class="extra-date-remove text-faint" data-idx="${idx}">✕</button>
+      </div>
+    `;
+  }
+  function sync(){
+    container.querySelectorAll(".extra-date-row").forEach(row=>{
+      const idx = Number(row.dataset.idx);
+      dates[idx] = row.querySelector(".extra-date-input").value;
+    });
+  }
+  function renderRows(){
+    container.querySelector(".extra-date-rows").innerHTML = dates.length
+      ? dates.map(extraDateRowHTML).join("")
+      : `<p class="text-xs text-faint mb-2">추가된 날짜가 없습니다</p>`;
+    container.querySelectorAll(".extra-date-input").forEach(inp=> inp.addEventListener("change", sync));
+    container.querySelectorAll(".extra-date-remove").forEach(btn=>{
+      btn.addEventListener("click", ()=>{ sync(); dates.splice(Number(btn.dataset.idx),1); renderRows(); });
+    });
+  }
+  container.querySelector(".extra-date-add").addEventListener("click", ()=>{
+    sync();
+    dates.push(toISODate(new Date()));
+    renderRows();
+  });
+  renderRows();
+  return { get: ()=>{ sync(); return dates.filter(Boolean); } };
+}
+
 /* ---------- Supabase REST ---------- */
 async function apiGet(table, query=""){
   const r = await fetch(`${REST}/${table}?select=*${query}`, { headers: HEADERS });
@@ -417,6 +451,7 @@ async function createItem(payload){
       status: "진행중",
       assignees: payload.assignees || [],
       date: payload.date || null,
+      extra_dates: payload.extraDates || [],
       all_day: payload.allDay,
       time: payload.allDay ? "" : payload.time,
       location: payload.location || "",
@@ -518,6 +553,7 @@ async function updateItem(itemId, patch){
     const now = new Date().toISOString();
     const row = {
       category_id: patch.categoryId, title: patch.title, subtitle: patch.subtitle || "", date: patch.date || null,
+      extra_dates: patch.extraDates || [],
       all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
       reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
     };
@@ -680,6 +716,15 @@ function collectCalendarEvents(scopedItems){
         assignees: item.assignees||[], status: item.status, isSub:false, item,
       });
     }
+    (item.extra_dates||[]).forEach(d=>{
+      if(d){
+        events.push({
+          parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+          date: d, all_day: item.all_day, time: item.time, location: item.location||"",
+          assignees: item.assignees||[], status: item.status, isSub:false, item,
+        });
+      }
+    });
     (item.logs||[]).forEach(log=>{
       if(log.date){
         events.push({
@@ -1078,6 +1123,7 @@ function openNewItemModal(initialDate){
   let selectedCategoryId = defaultCat;
   let assignees = [];
   let reminderEditor = null;
+  let extraDatesEditor = null;
 
   function renderCaseSearch(){
     const wrap = backdrop.querySelector("#case-search-wrap");
@@ -1162,6 +1208,11 @@ function openNewItemModal(initialDate){
           <input type="date" id="f-date" class="input" value="${dateVal}" />
           <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
         </div>
+        <label class="label">추가 날짜 (선택, 여러 날짜에 반복 표시)</label>
+        <div id="extra-dates-editor" class="mb-3">
+          <div class="extra-date-rows"></div>
+          <button type="button" class="btn-soft extra-date-add">＋ 날짜 추가</button>
+        </div>
         <label class="label">장소 (선택)</label>
         <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
         <label class="label">알림 (선택, 여러 개 추가 가능)</label>
@@ -1229,6 +1280,8 @@ function openNewItemModal(initialDate){
     );
 
     reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
+    const extraDatesContainer = backdrop.querySelector("#extra-dates-editor");
+    extraDatesEditor = extraDatesContainer ? createExtraDatesEditor(extraDatesContainer, []) : null;
   }
 
   renderCaseSearch();
@@ -1254,6 +1307,7 @@ function openNewItemModal(initialDate){
         title,
         subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
         date: backdrop.querySelector("#f-date").value,
+        extraDates: extraDatesEditor ? extraDatesEditor.get() : [],
         allDay: backdrop.querySelector("#f-allday").checked,
         time: backdrop.querySelector("#f-time").value,
         location: backdrop.querySelector("#f-location").value,
@@ -1293,6 +1347,11 @@ function openEditItemModal(item){
       <div class="flex gap-2 mb-3">
         <input type="date" id="f-date" class="input" value="${item.date||""}" />
         <input type="time" id="f-time" class="input ${item.all_day!==false?"hidden":""}" style="width:110px;" value="${item.time||"09:00"}" />
+      </div>
+      <label class="label">추가 날짜 (선택, 여러 날짜에 반복 표시)</label>
+      <div id="extra-dates-editor" class="mb-3">
+        <div class="extra-date-rows"></div>
+        <button type="button" class="btn-soft extra-date-add">＋ 날짜 추가</button>
       </div>
       <label class="label">장소</label>
       <input id="f-location" class="input mb-3" value="${esc(item.location||"")}" />
@@ -1387,6 +1446,7 @@ function openEditItemModal(item){
   }
   renderAssigneeChips();
   const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(item));
+  const extraDatesEditor = createExtraDatesEditor(backdrop.querySelector("#extra-dates-editor"), item.extra_dates||[]);
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
     const name = inp.value.trim();
@@ -1415,6 +1475,7 @@ function openEditItemModal(item){
       title,
       subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
       date: backdrop.querySelector("#f-date").value,
+      extraDates: extraDatesEditor.get(),
       allDay: backdrop.querySelector("#f-allday").checked,
       time: backdrop.querySelector("#f-time").value,
       location: backdrop.querySelector("#f-location").value,
