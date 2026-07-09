@@ -234,7 +234,7 @@ let items = [];
 let activeCat = "all";
 let viewMode = "calendar";
 let monthCursor = new Date();
-let selectedDate = (window.innerWidth < 768) ? toISODate(new Date()) : null;
+let selectedDate = toISODate(new Date());
 let selectedItemId = null;
 
 /* ---------- 안드로이드 하드웨어 뒤로가기 대응 ---------- */
@@ -301,7 +301,30 @@ function hasFollowUp(item){
   // 건이 처음 만들어진 시각보다 1분 이상 나중에 추가된 기록이 있으면 "후속 기록 있음"으로 판단
   return logs.some(l => new Date(l.created_at).getTime() > createdAt + 60000);
 }
-function whenLabel(item){ if(!item.date) return ""; return item.all_day===false && item.time ? `${fmtDate(item.date)} · ${item.time}` : fmtDate(item.date); }
+function whenLabel(item){
+  if(!item.date) return "";
+  const hasRange = item.end_date && item.end_date !== item.date;
+  const startDateStr = fmtDate(item.date);
+  const endDateStr = hasRange ? fmtDate(item.end_date) : "";
+  if(item.all_day===false){
+    const t1 = item.time || "";
+    const t2 = item.end_time || "";
+    if(hasRange){
+      return `${startDateStr}${t1?` ${t1}`:""} ~ ${endDateStr}${t2?` ${t2}`:""}`;
+    }
+    if(t1 && t2) return `${startDateStr} ${t1} ~ ${t2}`;
+    if(t1) return `${startDateStr} ${t1}`;
+    return startDateStr;
+  }
+  return hasRange ? `${startDateStr} ~ ${endDateStr}` : startDateStr;
+}
+function addOneHour(t){
+  if(!t) return "10:00";
+  const [h,m] = t.split(":").map(Number);
+  const total = (h*60+m+60) % (24*60);
+  const nh = Math.floor(total/60), nm = total%60;
+  return `${String(nh).padStart(2,"0")}:${String(nm).padStart(2,"0")}`;
+}
 function catById(id){ return categories.find(c=>c.id===id) || {name:"미분류", color:"#999"}; }
 function esc(s){ return (s||"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
 
@@ -451,9 +474,11 @@ async function createItem(payload){
       status: "진행중",
       assignees: payload.assignees || [],
       date: payload.date || null,
+      end_date: payload.endDate || null,
       extra_dates: payload.extraDates || [],
       all_day: payload.allDay,
       time: payload.allDay ? "" : payload.time,
+      end_time: payload.allDay ? "" : (payload.endTime || ""),
       location: payload.location || "",
       linked_case_id: null,
       converted_from: null,
@@ -553,8 +578,9 @@ async function updateItem(itemId, patch){
     const now = new Date().toISOString();
     const row = {
       category_id: patch.categoryId, title: patch.title, subtitle: patch.subtitle || "", date: patch.date || null,
+      end_date: patch.endDate || null,
       extra_dates: patch.extraDates || [],
-      all_day: patch.allDay, time: patch.allDay ? "" : patch.time, location: patch.location || "",
+      all_day: patch.allDay, time: patch.allDay ? "" : patch.time, end_time: patch.allDay ? "" : (patch.endTime || ""), location: patch.location || "",
       reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
     };
     const updated = await apiUpdate("items", itemId, row);
@@ -710,11 +736,23 @@ function collectCalendarEvents(scopedItems){
   const events = [];
   scopedItems.forEach(item=>{
     if(item.date){
-      events.push({
-        parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
-        date: item.date, all_day: item.all_day, time: item.time, location: item.location||"",
-        assignees: item.assignees||[], status: item.status, isSub:false, item,
-      });
+      const startD = new Date(item.date + "T00:00:00");
+      const endD = item.end_date ? new Date(item.end_date + "T00:00:00") : startD;
+      if(endD > startD){
+        for(let d = new Date(startD); d <= endD; d.setDate(d.getDate()+1)){
+          events.push({
+            parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+            date: toISODate(d), all_day: item.all_day, time: item.time, location: item.location||"",
+            assignees: item.assignees||[], status: item.status, isSub:false, item,
+          });
+        }
+      } else {
+        events.push({
+          parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+          date: item.date, all_day: item.all_day, time: item.time, location: item.location||"",
+          assignees: item.assignees||[], status: item.status, isSub:false, item,
+        });
+      }
     }
     (item.extra_dates||[]).forEach(d=>{
       if(d){
@@ -1123,7 +1161,6 @@ function openNewItemModal(initialDate){
   let selectedCategoryId = defaultCat;
   let assignees = [];
   let reminderEditor = null;
-  let extraDatesEditor = null;
 
   function renderCaseSearch(){
     const wrap = backdrop.querySelector("#case-search-wrap");
@@ -1204,14 +1241,15 @@ function openNewItemModal(initialDate){
           <label class="label" style="margin-bottom:0;">날짜</label>
           <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
         </div>
-        <div class="flex gap-2 mb-3">
-          <input type="date" id="f-date" class="input" value="${dateVal}" />
+        <p class="text-11 font-mono text-faint mb-1">시작</p>
+        <div class="flex gap-2 mb-2">
+          <input type="date" id="f-date" class="input" value="${dateVal}" style="flex:1;" />
           <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
         </div>
-        <label class="label">추가 날짜 (선택, 여러 날짜에 반복 표시)</label>
-        <div id="extra-dates-editor" class="mb-3">
-          <div class="extra-date-rows"></div>
-          <button type="button" class="btn-soft extra-date-add">＋ 날짜 추가</button>
+        <p class="text-11 font-mono text-faint mb-1">종료 (여러 날이면 입력, 하루면 비워두기)</p>
+        <div class="flex gap-2 mb-3">
+          <input type="date" id="f-end-date" class="input" style="flex:1;" />
+          <input type="time" id="f-end-time" class="input hidden" style="width:110px;" value="10:00" />
         </div>
         <label class="label">장소 (선택)</label>
         <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
@@ -1251,7 +1289,14 @@ function openNewItemModal(initialDate){
 
     backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
       backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
+      const endTimeEl = backdrop.querySelector("#f-end-time");
+      if(endTimeEl) endTimeEl.classList.toggle("hidden", e.target.checked);
     });
+    const startTimeEl = backdrop.querySelector("#f-time");
+    const endTimeEl = backdrop.querySelector("#f-end-time");
+    if(startTimeEl && endTimeEl){
+      startTimeEl.addEventListener("input", ()=>{ endTimeEl.value = addOneHour(startTimeEl.value); });
+    }
 
     function renderAssigneeChips(){
       backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
@@ -1280,8 +1325,6 @@ function openNewItemModal(initialDate){
     );
 
     reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), []);
-    const extraDatesContainer = backdrop.querySelector("#extra-dates-editor");
-    extraDatesEditor = extraDatesContainer ? createExtraDatesEditor(extraDatesContainer, []) : null;
   }
 
   renderCaseSearch();
@@ -1307,9 +1350,10 @@ function openNewItemModal(initialDate){
         title,
         subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
         date: backdrop.querySelector("#f-date").value,
-        extraDates: extraDatesEditor ? extraDatesEditor.get() : [],
+        endDate: backdrop.querySelector("#f-end-date").value,
         allDay: backdrop.querySelector("#f-allday").checked,
         time: backdrop.querySelector("#f-time").value,
+        endTime: backdrop.querySelector("#f-end-time").value,
         location: backdrop.querySelector("#f-location").value,
         reminders: reminderEditor.get(),
         assignees,
@@ -1344,14 +1388,15 @@ function openEditItemModal(item){
         <label class="label" style="margin-bottom:0;">날짜</label>
         <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" ${item.all_day!==false?"checked":""} /> 하루종일</label>
       </div>
-      <div class="flex gap-2 mb-3">
-        <input type="date" id="f-date" class="input" value="${item.date||""}" />
+      <p class="text-11 font-mono text-faint mb-1">시작</p>
+      <div class="flex gap-2 mb-2">
+        <input type="date" id="f-date" class="input" value="${item.date||""}" style="flex:1;" />
         <input type="time" id="f-time" class="input ${item.all_day!==false?"hidden":""}" style="width:110px;" value="${item.time||"09:00"}" />
       </div>
-      <label class="label">추가 날짜 (선택, 여러 날짜에 반복 표시)</label>
-      <div id="extra-dates-editor" class="mb-3">
-        <div class="extra-date-rows"></div>
-        <button type="button" class="btn-soft extra-date-add">＋ 날짜 추가</button>
+      <p class="text-11 font-mono text-faint mb-1">종료 (여러 날이면 입력, 하루면 비워두기)</p>
+      <div class="flex gap-2 mb-3">
+        <input type="date" id="f-end-date" class="input" value="${item.end_date||""}" style="flex:1;" />
+        <input type="time" id="f-end-time" class="input ${item.all_day!==false?"hidden":""}" style="width:110px;" value="${item.end_time||"10:00"}" />
       </div>
       <label class="label">장소</label>
       <input id="f-location" class="input mb-3" value="${esc(item.location||"")}" />
@@ -1446,7 +1491,6 @@ function openEditItemModal(item){
   }
   renderAssigneeChips();
   const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(item));
-  const extraDatesEditor = createExtraDatesEditor(backdrop.querySelector("#extra-dates-editor"), item.extra_dates||[]);
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
     const name = inp.value.trim();
@@ -1465,6 +1509,10 @@ function openEditItemModal(item){
   });
   backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
     backdrop.querySelector("#f-time").classList.toggle("hidden", e.target.checked);
+    backdrop.querySelector("#f-end-time").classList.toggle("hidden", e.target.checked);
+  });
+  backdrop.querySelector("#f-time").addEventListener("input", ()=>{
+    backdrop.querySelector("#f-end-time").value = addOneHour(backdrop.querySelector("#f-time").value);
   });
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
@@ -1475,9 +1523,10 @@ function openEditItemModal(item){
       title,
       subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
       date: backdrop.querySelector("#f-date").value,
-      extraDates: extraDatesEditor.get(),
+      endDate: backdrop.querySelector("#f-end-date").value,
       allDay: backdrop.querySelector("#f-allday").checked,
       time: backdrop.querySelector("#f-time").value,
+      endTime: backdrop.querySelector("#f-end-time").value,
       location: backdrop.querySelector("#f-location").value,
       reminders: reminderEditor.get(),
       assignees,
