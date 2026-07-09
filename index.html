@@ -1248,7 +1248,7 @@ function openNewItemModal(initialDate){
         </div>
         <p class="text-11 font-mono text-faint mb-1">종료 (여러 날이면 입력, 하루면 비워두기)</p>
         <div class="flex gap-2 mb-3">
-          <input type="date" id="f-end-date" class="input" style="flex:1;" />
+          <input type="date" id="f-end-date" class="input" value="${dateVal}" style="flex:1;" />
           <input type="time" id="f-end-time" class="input hidden" style="width:110px;" value="10:00" />
         </div>
         <label class="label">장소 (선택)</label>
@@ -1296,6 +1296,15 @@ function openNewItemModal(initialDate){
     const endTimeEl = backdrop.querySelector("#f-end-time");
     if(startTimeEl && endTimeEl){
       startTimeEl.addEventListener("input", ()=>{ endTimeEl.value = addOneHour(startTimeEl.value); });
+    }
+    const startDateEl = backdrop.querySelector("#f-date");
+    const endDateEl = backdrop.querySelector("#f-end-date");
+    let endDateManuallySet = false;
+    if(startDateEl && endDateEl){
+      endDateEl.addEventListener("input", ()=>{ endDateManuallySet = true; });
+      startDateEl.addEventListener("input", ()=>{
+        if(!endDateManuallySet) endDateEl.value = startDateEl.value;
+      });
     }
 
     function renderAssigneeChips(){
@@ -1395,7 +1404,7 @@ function openEditItemModal(item){
       </div>
       <p class="text-11 font-mono text-faint mb-1">종료 (여러 날이면 입력, 하루면 비워두기)</p>
       <div class="flex gap-2 mb-3">
-        <input type="date" id="f-end-date" class="input" value="${item.end_date||""}" style="flex:1;" />
+        <input type="date" id="f-end-date" class="input" value="${item.end_date||item.date||""}" style="flex:1;" />
         <input type="time" id="f-end-time" class="input ${item.all_day!==false?"hidden":""}" style="width:110px;" value="${item.end_time||"10:00"}" />
       </div>
       <label class="label">장소</label>
@@ -1514,6 +1523,15 @@ function openEditItemModal(item){
   backdrop.querySelector("#f-time").addEventListener("input", ()=>{
     backdrop.querySelector("#f-end-time").value = addOneHour(backdrop.querySelector("#f-time").value);
   });
+  {
+    const startDateEl = backdrop.querySelector("#f-date");
+    const endDateEl = backdrop.querySelector("#f-end-date");
+    let endDateManuallySet = !!(item.end_date && item.end_date !== item.date);
+    endDateEl.addEventListener("input", ()=>{ endDateManuallySet = true; });
+    startDateEl.addEventListener("input", ()=>{
+      if(!endDateManuallySet) endDateEl.value = startDateEl.value;
+    });
+  }
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
     const title = backdrop.querySelector("#f-title").value.trim();
