@@ -508,8 +508,10 @@ async function addSubEntry(parentId, payload){
       author: currentUser,
       subtitle: payload.subtitle || "",
       date: payload.date || null,
+      end_date: payload.endDate || null,
       all_day: payload.allDay,
       time: payload.allDay ? "" : payload.time,
+      end_time: payload.allDay ? "" : (payload.endTime || ""),
       location: payload.location || "",
       reminders: payload.reminders || [],
       assignees: payload.assignees || [],
@@ -765,11 +767,23 @@ function collectCalendarEvents(scopedItems){
     });
     (item.logs||[]).forEach(log=>{
       if(log.date){
-        events.push({
-          parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: log.subtitle||"",
-          date: log.date, all_day: log.all_day, time: log.time, location: log.location||"",
-          assignees: log.assignees||[], status: item.status, isSub:true, item, log,
-        });
+        const lStart = new Date(log.date + "T00:00:00");
+        const lEnd = log.end_date ? new Date(log.end_date + "T00:00:00") : lStart;
+        if(lEnd > lStart){
+          for(let d = new Date(lStart); d <= lEnd; d.setDate(d.getDate()+1)){
+            events.push({
+              parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: log.subtitle||"",
+              date: toISODate(d), all_day: log.all_day, time: log.time, location: log.location||"",
+              assignees: log.assignees||[], status: item.status, isSub:true, item, log,
+            });
+          }
+        } else {
+          events.push({
+            parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: log.subtitle||"",
+            date: log.date, all_day: log.all_day, time: log.time, location: log.location||"",
+            assignees: log.assignees||[], status: item.status, isSub:true, item, log,
+          });
+        }
       }
     });
   });
@@ -1089,7 +1103,7 @@ function renderDetailPage(){
                       ${log.subtitle ? `<p class="font-display text-sm font-semibold text-ink mb-1">${esc(log.subtitle)}</p>` : ""}
                       ${(log.date || log.location || log.assignees?.length) ? `
                         <p class="text-xs text-muted font-mono mb-1">
-                          ${log.date ? `🕒 ${log.all_day===false && log.time ? `${fmtDate(log.date)} · ${log.time}` : fmtDate(log.date)}` : ""}
+                          ${log.date ? `🕒 ${whenLabel(log)}` : ""}
                           ${log.location ? ` &nbsp; 📍 ${esc(log.location)}` : ""}
                           ${log.assignees?.length ? ` &nbsp; 👤 ${log.assignees.map(esc).join(", ")}` : ""}
                         </p>` : ""}
@@ -1203,9 +1217,15 @@ function openNewItemModal(initialDate){
           <label class="label" style="margin-bottom:0;">날짜</label>
           <label class="text-xs text-muted flex items-center gap-1"><input type="checkbox" id="f-allday" checked /> 하루종일</label>
         </div>
-        <div class="flex gap-2 mb-3">
-          <input type="date" id="f-date" class="input" value="${dateVal}" />
+        <p class="text-11 font-mono text-faint mb-1">시작</p>
+        <div class="flex gap-2 mb-2">
+          <input type="date" id="f-date" class="input" value="${dateVal}" style="flex:1;" />
           <input type="time" id="f-time" class="input hidden" style="width:110px;" value="09:00" />
+        </div>
+        <p class="text-11 font-mono text-faint mb-1">종료 (여러 날이면 입력, 하루면 비워두기)</p>
+        <div class="flex gap-2 mb-3">
+          <input type="date" id="f-end-date" class="input" value="${dateVal}" style="flex:1;" />
+          <input type="time" id="f-end-time" class="input hidden" style="width:110px;" value="10:00" />
         </div>
         <label class="label">장소 (선택)</label>
         <input id="f-location" class="input mb-3" placeholder="예: OO컨트리클럽, 주소 등" />
@@ -1344,8 +1364,10 @@ function openNewItemModal(initialDate){
       addSubEntry(selectedParent.id, {
         subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
         date: backdrop.querySelector("#f-date").value,
+        endDate: backdrop.querySelector("#f-end-date").value,
         allDay: backdrop.querySelector("#f-allday").checked,
         time: backdrop.querySelector("#f-time").value,
+        endTime: backdrop.querySelector("#f-end-time").value,
         location: backdrop.querySelector("#f-location").value,
         reminders: reminderEditor.get(),
         assignees,
