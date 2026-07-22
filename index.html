@@ -686,6 +686,7 @@ function render(){
         </div>
         <div class="flex items-center gap-3">
           ${upcoming>0 ? `<div class="flex items-center gap-1 text-danger text-xs font-mono bg-danger-soft" style="padding:4px 10px;border-radius:999px;">🔔 ${upcoming}건 임박</div>` : ""}
+          <button class="btn-soft" style="padding:8px 12px;" data-action="open-search">🔍</button>
           <button class="btn-forest flex items-center gap-1" data-action="open-new-item">＋ 새 건</button>
         </div>
       </div>
@@ -1035,6 +1036,8 @@ function attachGlobalHandlers(){
   });
   const openNewItemBtn = document.querySelector('[data-action="open-new-item"]');
   if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
+  const openSearchBtn = document.querySelector('[data-action="open-search"]');
+  if(openSearchBtn) openSearchBtn.addEventListener("click", ()=> openSearchModal());
   const openNewCatBtn = document.querySelector('[data-action="open-new-cat"]');
   if(openNewCatBtn) openNewCatBtn.addEventListener("click", ()=> openCategoryManagerModal());
   const openUserManagerBtn = document.querySelector('[data-action="open-user-manager"]');
@@ -1149,6 +1152,75 @@ function bindDetailEvents(item){
 }
 
 /* ---------- 새 건 등록 모달 ---------- */
+/* ---------- 검색 모달 ---------- */
+function openSearchModal(){
+  closeAllModals();
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal-panel" style="max-width:480px;">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-display text-lg font-semibold">검색</h3>
+        <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
+      </div>
+      <input id="search-input" class="input mb-3" placeholder="제목, 소제목, 내용, 장소로 검색" />
+      <div id="search-results"></div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  layerOpened();
+  setupBackdropClose(backdrop, requestClose);
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", requestClose);
+
+  const input = backdrop.querySelector("#search-input");
+  const resultsEl = backdrop.querySelector("#search-results");
+
+  function runSearch(){
+    const q = input.value.trim().toLowerCase();
+    if(!q){
+      resultsEl.innerHTML = `<p class="text-sm text-faint" style="padding:16px 0;">제목, 소제목, 진행 내용, 장소로 검색할 수 있어요.</p>`;
+      return;
+    }
+    const matches = items.filter(it=>{
+      if(it.title && it.title.toLowerCase().includes(q)) return true;
+      if(it.subtitle && it.subtitle.toLowerCase().includes(q)) return true;
+      if(it.location && it.location.toLowerCase().includes(q)) return true;
+      if((it.logs||[]).some(l => (l.content||"").toLowerCase().includes(q) || (l.subtitle||"").toLowerCase().includes(q))) return true;
+      return false;
+    }).sort((a,b)=> new Date(b.updated_at) - new Date(a.updated_at));
+
+    if(matches.length===0){
+      resultsEl.innerHTML = `<p class="text-sm text-faint" style="padding:16px 0;">검색 결과가 없습니다.</p>`;
+      return;
+    }
+    resultsEl.innerHTML = matches.map(it=>{
+      const cat = catById(it.category_id);
+      return `
+        <div class="search-result-row" data-id="${it.id}" style="cursor:pointer;padding:10px 0;border-bottom:1px solid var(--c-border);">
+          <div class="flex items-center gap-2 mb-1 flex-wrap">
+            <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
+            ${it.date ? `<span class="text-xs text-faint font-mono">${whenLabel(it)}</span>` : ""}
+          </div>
+          <p class="text-sm font-medium text-ink">${esc(it.title)}${it.subtitle ? ` · ${esc(it.subtitle)}` : ""}</p>
+        </div>
+      `;
+    }).join("");
+    resultsEl.querySelectorAll(".search-result-row").forEach(row=>{
+      row.addEventListener("click", ()=>{
+        const id = row.dataset.id;
+        closeAllModals();
+        selectedItemId = id;
+        renderDetailPage();
+        if(openLayers>0){ try{ history.replaceState({ openLayers }, ""); }catch(e){} }
+        else layerOpened();
+      });
+    });
+  }
+  input.addEventListener("input", runSearch);
+  runSearch();
+  setTimeout(()=> input.focus(), 50);
+}
+
 function openNewItemModal(initialDate){
   closeAllModals();
   const defaultCat = categories[0]?.id || "";
