@@ -919,7 +919,19 @@ function renderCalendarHTML(){
     const chipsHtml = dayItems.slice(0,3).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
       const icon = shared ? "🔗" : "🔒";
-      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}">${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`;
+      const rangeStart = e.isSub ? e.log.date : e.item.date;
+      const rangeEnd = e.isSub ? (e.log.end_date || e.log.date) : (e.item.end_date || e.item.date);
+      const isRange = rangeEnd && rangeEnd !== rangeStart;
+      let extraStyle = "";
+      let label = `${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}`;
+      if(isRange){
+        const wd = new Date(iso + "T00:00:00").getDay();
+        const segStart = (e.date===rangeStart) || wd===0;
+        const segEnd = (e.date===rangeEnd) || wd===6;
+        extraStyle = `border-top-left-radius:${segStart?"4px":"0"};border-bottom-left-radius:${segStart?"4px":"0"};border-top-right-radius:${segEnd?"4px":"0"};border-bottom-right-radius:${segEnd?"4px":"0"};`;
+        if(!segStart) label = "&nbsp;";
+      }
+      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color};${extraStyle}" data-action="open-item" data-id="${e.parentId}" title="${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}">${label}</div>`;
     }).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
