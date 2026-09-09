@@ -559,6 +559,39 @@ async function setStatus(itemId, status){
   }
 }
 
+function shiftDateStr(d, deltaDays){
+  if(!d) return d;
+  const dt = new Date(d + "T00:00:00");
+  dt.setDate(dt.getDate() + deltaDays);
+  return toISODate(dt);
+}
+
+async function moveItemDate(parentId, isSub, logId, deltaDays){
+  const item = items.find(i=>i.id===parentId);
+  if(!item || !deltaDays) return;
+  try{
+    const now = new Date().toISOString();
+    if(isSub){
+      const newLogs = (item.logs||[]).map(l=>
+        l.id===logId ? { ...l, date: shiftDateStr(l.date, deltaDays), end_date: shiftDateStr(l.end_date, deltaDays) } : l
+      );
+      const updated = await apiUpdate("items", parentId, { logs: newLogs, updated_at: now });
+      items = items.map(i=>i.id===updated.id?updated:i);
+    } else {
+      const updated = await apiUpdate("items", parentId, {
+        date: shiftDateStr(item.date, deltaDays),
+        end_date: shiftDateStr(item.end_date, deltaDays),
+        updated_at: now,
+      });
+      items = items.map(i=>i.id===updated.id?updated:i);
+    }
+    render();
+  }catch(err){
+    alert("날짜 이동에 실패했습니다: " + err.message);
+    console.error(err);
+  }
+}
+
 async function convertToProgress(itemId){
   try{
     const item = items.find(i=>i.id===itemId);
@@ -886,7 +919,7 @@ function renderCalendarHTML(){
     const chipsHtml = dayItems.slice(0,3).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
       const icon = shared ? "🔗" : "🔒";
-      return `<div class="cal-chip" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}">${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`;
+      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}">${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`;
     }).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
@@ -1005,6 +1038,36 @@ function bindMainBodyEvents(){
   });
   const addOnSelected = document.querySelector('[data-action="add-on-selected-date"]');
   if(addOnSelected) addOnSelected.addEventListener("click", ()=> openNewItemModal(selectedDate));
+
+  // 달력 칩 드래그 & 드롭으로 날짜 이동
+  document.querySelectorAll('.cal-chip[draggable="true"]').forEach(chip=>{
+    chip.addEventListener("dragstart", (e)=>{
+      e.stopPropagation();
+      const data = {
+        parentId: chip.dataset.id,
+        fromDate: chip.dataset.fromDate,
+        isSub: chip.dataset.isSub==="1",
+        logId: chip.dataset.logId||"",
+      };
+      e.dataTransfer.setData("text/plain", JSON.stringify(data));
+      e.dataTransfer.effectAllowed = "move";
+    });
+  });
+  document.querySelectorAll('.cal-cell[data-date]').forEach(cell=>{
+    cell.addEventListener("dragover", (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect = "move"; });
+    cell.addEventListener("drop", (e)=>{
+      e.preventDefault();
+      const raw = e.dataTransfer.getData("text/plain");
+      if(!raw) return;
+      try{
+        const data = JSON.parse(raw);
+        const toDate = cell.dataset.date;
+        if(!data.fromDate || !toDate || data.fromDate===toDate) return;
+        const delta = Math.round((new Date(toDate+"T00:00:00") - new Date(data.fromDate+"T00:00:00")) / 86400000);
+        moveItemDate(data.parentId, data.isSub, data.logId, delta);
+      }catch(err){ console.error(err); }
+    });
+  });
 }
 
 function attachGlobalHandlers(){
