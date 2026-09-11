@@ -995,10 +995,14 @@ function renderCalendarHTML(){
   });
 
   let cells = "";
-  for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let i=0;i<startWeekday;i++){
+    const row = Math.floor(i/7)+1, col = (i%7)+1;
+    cells += `<div class="cal-cell empty" style="grid-row:${row};grid-column:${col};"></div>`;
+  }
   for(let d=1; d<=daysInMonth; d++){
     const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
     const cellIdx = startWeekday + d - 1;
+    const gridRow = Math.floor(cellIdx/7)+1, gridCol = (cellIdx%7)+1;
     const allDayItems = byDate[iso] || [];
     // 여러 날짜(구간) 일정은 별도의 이어붙인 막대로 그리므로, 이 칸 안 목록에서는 제외
     const dayItems = allDayItems.filter(e=>{
@@ -1022,7 +1026,7 @@ function renderCalendarHTML(){
     }).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
     const laneSpacer = laneCountByCellIdx[cellIdx] ? `<div class="cal-lane-spacer" style="height:${laneCountByCellIdx[cellIdx]*17}px;"></div>` : "";
-    cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
+    cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" style="grid-row:${gridRow};grid-column:${gridCol};" data-action="pick-date" data-date="${iso}">
       <div class="text-sm day-num" style="text-align:center;font-weight:600;">${d}</div>
       <div class="cal-dots">${dotsHtml}</div>
       <div class="cal-chips-desktop">${laneSpacer}${chipsHtml}${moreHtml}</div>
@@ -1031,7 +1035,10 @@ function renderCalendarHTML(){
   // 항상 6주(42칸)로 고정해서 달이 바뀌어도 칸 높이가 그대로 유지되게 함
   const totalCellsSoFar = startWeekday + daysInMonth;
   const totalSlots = 42;
-  for(let i=totalCellsSoFar; i<totalSlots; i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let i=totalCellsSoFar; i<totalSlots; i++){
+    const row = Math.floor(i/7)+1, col = (i%7)+1;
+    cells += `<div class="cal-cell empty" style="grid-row:${row};grid-column:${col};"></div>`;
+  }
   const rowCount = 6;
 
   const barsHtml = rangeSegments.map(seg=>{
