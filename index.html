@@ -94,26 +94,25 @@
   .cal-grid{ border:1px solid var(--c-border); border-radius:14px; overflow:hidden; }
   .cal-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; border-bottom:1px solid var(--c-border); }
   .cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:11px; color:var(--c-faint); padding:6px 0; border-bottom:1px solid var(--c-border); }
-  .cal-body{ display:grid; grid-template-columns:repeat(7,1fr); }
-  .cal-cell{ min-height:64px; border-bottom:1px solid var(--c-border); border-right:1px solid var(--c-border); padding:6px 4px; cursor:pointer; overflow:hidden; }
+  .cal-body{ display:grid; grid-template-columns:repeat(7,1fr); position:relative; }
+  .cal-cell{ min-height:78px; border-bottom:1px solid var(--c-border); border-right:1px solid var(--c-border); padding:4px 3px; cursor:pointer; overflow:hidden; text-align:left; }
+  .cal-cell .day-num{ text-align:left !important; font-size:11px; }
   .cal-cell.today .day-num{ color:var(--c-forest); font-weight:700; }
   .cal-cell.selected{ background:var(--c-page); box-shadow: inset 0 0 0 1.5px var(--c-gold); }
   .cal-cell.empty{ cursor:default; }
-  .cal-dots{ display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:4px; }
-  .cal-dot{ width:6px; height:6px; border-radius:999px; }
-  .cal-lock-icon{ font-size:8px; line-height:1; }
-  .cal-chips-desktop{ display:none; }
-  .cal-range-bar{ display:none; }
+  .cal-dots{ display:none; }
+  .cal-lock-icon{ display:none; }
+  .cal-chips-desktop{ display:block; margin-top:2px; overflow:hidden; max-height:60px; }
+  .cal-chip{ font-size:9.5px; border-radius:3px; padding:1px 3px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal-chip-more{ font-size:9px; color:var(--c-faint); }
+  .cal-lane-spacer{ display:block; }
+  .cal-range-bar{ display:flex; align-items:center; align-self:start; height:16px; font-size:9px; color:#fff; font-weight:600; padding:0 3px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; z-index:2; }
   @media (min-width:768px){
-    .cal-cell{ height:92px; min-height:0; padding:8px; text-align:left; }
-    .cal-cell .day-num{ text-align:left !important; font-size:12px; }
-    .cal-dots{ display:none; }
-    .cal-chips-desktop{ display:block; margin-top:4px; overflow:hidden; max-height:56px; }
-    .cal-chip{ font-size:11px; border-radius:4px; padding:2px 5px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .cal-chip-more{ font-size:10px; color:var(--c-faint); }
-    .cal-lane-spacer{ display:block; }
-    .cal-range-bar{ display:flex; align-items:center; align-self:start; height:18px; font-size:10px; color:#fff; font-weight:600; padding:0 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; z-index:2; }
-    .cal-body{ position:relative; }
+    .cal-cell{ height:92px; min-height:0; padding:8px; }
+    .cal-cell .day-num{ font-size:12px; }
+    .cal-chips-desktop{ margin-top:4px; max-height:56px; }
+    .cal-chip{ font-size:11px; border-radius:4px; padding:2px 5px; }
+    .cal-range-bar{ height:18px; font-size:10px; padding:0 5px; }
 
     html, body{ height:100%; }
     #app{ display:flex; flex-direction:column; min-height:100vh; }
@@ -280,6 +279,7 @@ function closeTopLayer(){
   }
   if(viewMode==="list"){
     viewMode = "calendar";
+    requestAutoScroll();
     render();
     return;
   }
@@ -727,17 +727,17 @@ function render(){
           <button class="btn-forest flex items-center gap-1" data-action="open-new-item">＋ 새 건</button>
         </div>
       </div>
-      <div class="chip-row max-w mx-auto">
-        <button class="chip ${activeCat==="all"?"active":""}" data-action="set-cat" data-cat="all">전체 ${items.length}</button>
-        ${categories.map(c=>{
-          const count = items.filter(i=>i.category_id===c.id).length;
-          const activeStyle = activeCat===c.id ? `background:${c.color};color:#fff;border-color:transparent;` : `color:${c.color};`;
-          return `<button class="chip" style="${activeStyle}" data-action="set-cat" data-cat="${c.id}">${esc(c.name)} ${count}</button>`;
-        }).join("")}
-        <button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-new-cat">🏷 카테고리</button>
-        ${currentUser===MASTER_NAME ? `<button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-user-manager">👤 회원 관리</button>` : ""}
-      </div>
     </header>
+    <div class="chip-row max-w mx-auto">
+      <button class="chip ${activeCat==="all"?"active":""}" data-action="set-cat" data-cat="all">전체 ${items.length}</button>
+      ${categories.map(c=>{
+        const count = items.filter(i=>i.category_id===c.id).length;
+        const activeStyle = activeCat===c.id ? `background:${c.color};color:#fff;border-color:transparent;` : `color:${c.color};`;
+        return `<button class="chip" style="${activeStyle}" data-action="set-cat" data-cat="${c.id}">${esc(c.name)} ${count}</button>`;
+      }).join("")}
+      <button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-new-cat">🏷 카테고리</button>
+      ${currentUser===MASTER_NAME ? `<button class="chip" style="border-style:dashed;color:var(--c-faint);" data-action="open-user-manager">👤 회원 관리</button>` : ""}
+    </div>
 
     <main class="max-w mx-auto px-4 py-5 app-main ${viewMode==="calendar"?"cal-mode":""}">
       <div class="flex items-center justify-end gap-1 mb-3">
@@ -759,9 +759,26 @@ function render(){
   renderDetailPage();
   attachGlobalHandlers();
   const jumpToday = document.querySelector('[data-action="jump-today"]');
-  if(jumpToday) jumpToday.addEventListener("click", ()=>{ monthCursor = new Date(); selectedDate = toISODate(new Date()); render(); });
+  if(jumpToday) jumpToday.addEventListener("click", ()=>{ monthCursor = new Date(); selectedDate = toISODate(new Date()); requestAutoScroll(); render(); });
   const fabAdd = document.querySelector('[data-action="fab-add-item"]');
   if(fabAdd) fabAdd.addEventListener("click", ()=> openNewItemModal(selectedDate));
+
+  if(pendingAutoScroll){
+    pendingAutoScroll = false;
+    scrollPastCategoryRow();
+  }
+}
+
+let pendingAutoScroll = false;
+function requestAutoScroll(){ pendingAutoScroll = true; }
+function scrollPastCategoryRow(){
+  if(viewMode!=="calendar") return;
+  requestAnimationFrame(()=>{
+    const row = document.querySelector(".chip-row");
+    if(!row) return;
+    const rect = row.getBoundingClientRect();
+    if(rect.height>0) window.scrollTo({ top: window.scrollY + rect.height, behavior: "auto" });
+  });
 }
 
 function itemToEvent(item){
@@ -1004,7 +1021,7 @@ function renderCalendarHTML(){
       return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}" title="${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}">${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`;
     }).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
-    const laneSpacer = laneCountByCellIdx[cellIdx] ? `<div class="cal-lane-spacer" style="height:${laneCountByCellIdx[cellIdx]*20}px;"></div>` : "";
+    const laneSpacer = laneCountByCellIdx[cellIdx] ? `<div class="cal-lane-spacer" style="height:${laneCountByCellIdx[cellIdx]*17}px;"></div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
       <div class="text-sm day-num" style="text-align:center;font-weight:600;">${d}</div>
       <div class="cal-dots">${dotsHtml}</div>
@@ -1022,7 +1039,7 @@ function renderCalendarHTML(){
     const leftR = seg.segIsStart ? "4px" : "0";
     const rightR = seg.segIsEnd ? "4px" : "0";
     return `<div class="cal-range-bar" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-item" data-id="${seg.parentId}"
-      style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin-top:${22+seg.lane*20}px; background:${color}; border-top-left-radius:${leftR}; border-bottom-left-radius:${leftR}; border-top-right-radius:${rightR}; border-bottom-right-radius:${rightR};" title="${esc(seg.fullLabel)}">${esc(seg.label)}</div>`;
+      style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin-top:${19+seg.lane*17}px; background:${color}; border-top-left-radius:${leftR}; border-bottom-left-radius:${leftR}; border-top-right-radius:${rightR}; border-bottom-right-radius:${rightR};" title="${esc(seg.fullLabel)}">${esc(seg.label)}</div>`;
   }).join("");
 
   return `
@@ -1163,7 +1180,7 @@ function bindMainBodyEvents(){
 
 function attachGlobalHandlers(){
   document.querySelectorAll('[data-action="set-cat"]').forEach(el=>{
-    el.addEventListener("click", ()=>{ activeCat = el.dataset.cat; selectedDate=null; viewMode="calendar"; render(); });
+    el.addEventListener("click", ()=>{ activeCat = el.dataset.cat; selectedDate=null; viewMode="calendar"; requestAutoScroll(); render(); });
   });
   document.querySelectorAll('[data-action="set-view"]').forEach(el=>{
     el.addEventListener("click", ()=>{
@@ -1174,7 +1191,7 @@ function attachGlobalHandlers(){
       } else if(target==="calendar" && viewMode==="list"){
         requestClose();
       } else {
-        viewMode = target; render();
+        viewMode = target; requestAutoScroll(); render();
       }
     });
   });
@@ -2095,6 +2112,7 @@ async function startApp(){
   document.getElementById("app").classList.remove("hidden");
   try{
     await loadAll();
+    scrollPastCategoryRow();
     await loadApprovedUsers();
     requestNotificationPermission();
     startPolling();
