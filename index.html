@@ -103,6 +103,7 @@
   .cal-dot{ width:6px; height:6px; border-radius:999px; }
   .cal-lock-icon{ font-size:8px; line-height:1; }
   .cal-chips-desktop{ display:none; }
+  .cal-range-bar{ display:none; }
   @media (min-width:768px){
     .cal-cell{ height:92px; min-height:0; padding:8px; text-align:left; }
     .cal-cell .day-num{ text-align:left !important; font-size:12px; }
@@ -110,6 +111,9 @@
     .cal-chips-desktop{ display:block; margin-top:4px; overflow:hidden; max-height:56px; }
     .cal-chip{ font-size:11px; border-radius:4px; padding:2px 5px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .cal-chip-more{ font-size:10px; color:var(--c-faint); }
+    .cal-lane-spacer{ display:block; }
+    .cal-range-bar{ display:flex; align-items:center; align-self:start; height:18px; font-size:10px; color:#fff; font-weight:600; padding:0 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; z-index:2; }
+    .cal-body{ position:relative; }
 
     html, body{ height:100%; }
     #app{ display:flex; flex-direction:column; min-height:100vh; }
@@ -890,6 +894,67 @@ function renderMainBody(overdueInProgress){
   bindMainBodyEvents();
 }
 
+function buildRangeSegments(scopedItems, year, month, startWeekday, daysInMonth){
+  const monthFirst = new Date(year, month, 1);
+  const monthLast = new Date(year, month, daysInMonth);
+  const ranges = [];
+  scopedItems.forEach(item=>{
+    if(item.date && item.end_date && item.end_date!==item.date){
+      ranges.push({ start:item.date, end:item.end_date, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"", parentId:item.id, isSub:false, logId:"" });
+    }
+    (item.logs||[]).forEach(log=>{
+      if(log.date && log.end_date && log.end_date!==log.date){
+        ranges.push({ start:log.date, end:log.end_date, categoryId:item.category_id, title:item.title, subtitle:log.subtitle||"", parentId:item.id, isSub:true, logId:log.id });
+      }
+    });
+  });
+
+  const clipped = [];
+  ranges.forEach(r=>{
+    const s = new Date(r.start+"T00:00:00");
+    const e = new Date(r.end+"T00:00:00");
+    if(e < monthFirst || s > monthLast) return;
+    const clipStart = s < monthFirst ? monthFirst : s;
+    const clipEnd = e > monthLast ? monthLast : e;
+    clipped.push({
+      ...r,
+      trueStart: r.start,
+      clipStartIdx: startWeekday + clipStart.getDate() - 1,
+      clipEndIdx: startWeekday + clipEnd.getDate() - 1,
+      isTrueStart: clipStart.getTime()===s.getTime(),
+    });
+  });
+  clipped.sort((a,b)=> a.clipStartIdx-b.clipStartIdx);
+
+  const segments = [];
+  const rowLaneUsage = {};
+  clipped.forEach(r=>{
+    const startRow = Math.floor(r.clipStartIdx/7);
+    const endRow = Math.floor(r.clipEndIdx/7);
+    for(let row=startRow; row<=endRow; row++){
+      const rowFirstIdx = row*7, rowLastIdx = row*7+6;
+      const segStartIdx = Math.max(r.clipStartIdx, rowFirstIdx);
+      const segEndIdx = Math.min(r.clipEndIdx, rowLastIdx);
+      const colStart = segStartIdx - rowFirstIdx;
+      const colEnd = segEndIdx - rowFirstIdx;
+      if(!rowLaneUsage[row]) rowLaneUsage[row] = [];
+      let lane = 0;
+      while(rowLaneUsage[row].some(seg => seg.lane===lane && !(colEnd<seg.colStart || colStart>seg.colEnd))) lane++;
+      rowLaneUsage[row].push({ colStart, colEnd, lane });
+      segments.push({
+        rowIdx: row, colStart, colEnd, lane,
+        categoryId: r.categoryId,
+        label: (segStartIdx===r.clipStartIdx && r.isTrueStart) ? (r.subtitle ? `${r.title} · ${r.subtitle}` : r.title) : "",
+        fullLabel: r.subtitle ? `${r.title} · ${r.subtitle}` : r.title,
+        parentId: r.parentId, isSub: r.isSub, logId: r.logId, trueStart: r.trueStart,
+        segIsStart: segStartIdx===r.clipStartIdx,
+        segIsEnd: segEndIdx===r.clipEndIdx,
+      });
+    }
+  });
+  return { segments, laneUsage: rowLaneUsage };
+}
+
 function renderCalendarHTML(){
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
@@ -902,14 +967,31 @@ function renderCalendarHTML(){
   const byDate = {};
   events.forEach(e=>{ (byDate[e.date] = byDate[e.date]||[]).push(e); });
 
+  const { segments: rangeSegments, laneUsage } = buildRangeSegments(scoped, year, month, startWeekday, daysInMonth);
+  const laneCountByCellIdx = {};
+  rangeSegments.forEach(seg=>{
+    const rowFirstIdx = seg.rowIdx*7;
+    for(let c=seg.colStart; c<=seg.colEnd; c++){
+      const cellIdx = rowFirstIdx + c;
+      laneCountByCellIdx[cellIdx] = Math.max(laneCountByCellIdx[cellIdx]||0, seg.lane+1);
+    }
+  });
+
   let cells = "";
   for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
   for(let d=1; d<=daysInMonth; d++){
     const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const dayItems = byDate[iso] || [];
+    const cellIdx = startWeekday + d - 1;
+    const allDayItems = byDate[iso] || [];
+    // 여러 날짜(구간) 일정은 별도의 이어붙인 막대로 그리므로, 이 칸 안 목록에서는 제외
+    const dayItems = allDayItems.filter(e=>{
+      const rs = e.isSub ? e.log.date : e.item.date;
+      const re = e.isSub ? (e.log.end_date||e.log.date) : (e.item.end_date||e.item.date);
+      return !(re && re!==rs);
+    });
     const isToday = iso===todayISO;
     const isSelected = iso===selectedDate;
-    const dotsHtml = dayItems.slice(0,5).map(e=>{
+    const dotsHtml = allDayItems.slice(0,5).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
       if(shared){
         return `<span class="cal-dot" style="background:${catById(e.categoryId).color}"></span>`;
@@ -919,25 +1001,14 @@ function renderCalendarHTML(){
     const chipsHtml = dayItems.slice(0,3).map(e=>{
       const shared = e.assignees && e.assignees.length>0;
       const icon = shared ? "🔗" : "🔒";
-      const rangeStart = e.isSub ? e.log.date : e.item.date;
-      const rangeEnd = e.isSub ? (e.log.end_date || e.log.date) : (e.item.end_date || e.item.date);
-      const isRange = rangeEnd && rangeEnd !== rangeStart;
-      let extraStyle = "";
-      let label = `${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}`;
-      if(isRange){
-        const wd = new Date(iso + "T00:00:00").getDay();
-        const segStart = (e.date===rangeStart) || wd===0;
-        const segEnd = (e.date===rangeEnd) || wd===6;
-        extraStyle = `border-top-left-radius:${segStart?"4px":"0"};border-bottom-left-radius:${segStart?"4px":"0"};border-top-right-radius:${segEnd?"4px":"0"};border-bottom-right-radius:${segEnd?"4px":"0"};`;
-        if(!segStart) label = "&nbsp;";
-      }
-      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color};${extraStyle}" data-action="open-item" data-id="${e.parentId}" title="${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}">${label}</div>`;
+      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}" title="${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}">${icon} ${esc(e.subtitle ? `${e.title} · ${e.subtitle}` : e.title)}</div>`;
     }).join("");
     const moreHtml = dayItems.length>3 ? `<div class="cal-chip-more">+${dayItems.length-3}</div>` : "";
+    const laneSpacer = laneCountByCellIdx[cellIdx] ? `<div class="cal-lane-spacer" style="height:${laneCountByCellIdx[cellIdx]*20}px;"></div>` : "";
     cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""}" data-action="pick-date" data-date="${iso}">
       <div class="text-sm day-num" style="text-align:center;font-weight:600;">${d}</div>
       <div class="cal-dots">${dotsHtml}</div>
-      <div class="cal-chips-desktop">${chipsHtml}${moreHtml}</div>
+      <div class="cal-chips-desktop">${laneSpacer}${chipsHtml}${moreHtml}</div>
     </div>`;
   }
   // 항상 6주(42칸)로 고정해서 달이 바뀌어도 칸 높이가 그대로 유지되게 함
@@ -945,6 +1016,14 @@ function renderCalendarHTML(){
   const totalSlots = 42;
   for(let i=totalCellsSoFar; i<totalSlots; i++) cells += `<div class="cal-cell empty"></div>`;
   const rowCount = 6;
+
+  const barsHtml = rangeSegments.map(seg=>{
+    const color = catById(seg.categoryId).color;
+    const leftR = seg.segIsStart ? "4px" : "0";
+    const rightR = seg.segIsEnd ? "4px" : "0";
+    return `<div class="cal-range-bar" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-item" data-id="${seg.parentId}"
+      style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin-top:${22+seg.lane*20}px; background:${color}; border-top-left-radius:${leftR}; border-bottom-left-radius:${leftR}; border-top-right-radius:${rightR}; border-bottom-right-radius:${rightR};" title="${esc(seg.fullLabel)}">${esc(seg.label)}</div>`;
+  }).join("");
 
   return `
     <div class="cal-grid mb-2">
@@ -954,7 +1033,7 @@ function renderCalendarHTML(){
         <button data-action="next-month" class="text-muted">›</button>
       </div>
       <div class="cal-weekdays">${WEEKDAYS.map(w=>`<div>${w}</div>`).join("")}</div>
-      <div class="cal-body" style="grid-template-rows:repeat(${rowCount},1fr);">${cells}</div>
+      <div class="cal-body" style="grid-template-rows:repeat(${rowCount},1fr);">${cells}${barsHtml}</div>
     </div>
   `;
 }
@@ -1052,7 +1131,7 @@ function bindMainBodyEvents(){
   if(addOnSelected) addOnSelected.addEventListener("click", ()=> openNewItemModal(selectedDate));
 
   // 달력 칩 드래그 & 드롭으로 날짜 이동
-  document.querySelectorAll('.cal-chip[draggable="true"]').forEach(chip=>{
+  document.querySelectorAll('.cal-chip[draggable="true"], .cal-range-bar[draggable="true"]').forEach(chip=>{
     chip.addEventListener("dragstart", (e)=>{
       e.stopPropagation();
       const data = {
