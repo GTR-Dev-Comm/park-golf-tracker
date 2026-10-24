@@ -130,6 +130,35 @@
   .pn-title{ font-weight:700; font-size:13px; color:var(--c-ink); word-break:break-all; }
   .pn-sub{ font-size:12px; color:var(--c-muted); margin-top:2px; }
   .pn-meta{ font-size:11px; color:var(--c-faint); margin-top:2px; word-break:break-all; }
+  .menu-btn{ display:none; width:36px; height:36px; flex:none; border:1px solid var(--c-border); border-radius:10px; font-size:18px; line-height:1; align-items:center; justify-content:center; background:#fff; color:var(--c-ink); }
+  .mobile-filter{ display:none; }
+  .mf-chip{ color:#fff; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; }
+  .mobile-filter button{ font-size:12px; color:var(--c-muted); text-decoration:underline; }
+  .modal-backdrop.drawer{ align-items:stretch; justify-content:flex-start; }
+  .drawer-panel{ background:#fff; width:min(84vw, 330px); height:100%; display:flex; flex-direction:column; box-shadow:4px 0 24px rgba(0,0,0,.22); animation:drIn .18s ease-out; padding-top:env(safe-area-inset-top, 0px); }
+  @keyframes drIn{ from{ transform:translateX(-100%); } to{ transform:none; } }
+  .dr-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--c-border); }
+  .dr-title{ font-family:'Fraunces',serif; font-size:17px; font-weight:700; }
+  .dr-x{ font-size:22px; line-height:1; padding:4px 8px; color:var(--c-muted); }
+  .dr-section{ font-size:12px; color:var(--c-faint); padding:14px 16px 6px; }
+  .dr-list{ flex:1; min-height:0; overflow-y:auto; padding:0 8px 8px; }
+  .dr-row{ display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:11px 8px; border-radius:10px; font-size:15px; color:var(--c-ink); }
+  .dr-row.on{ background:#f3f4f6; font-weight:700; }
+  .dr-box{ width:22px; height:22px; border-radius:6px; border:2px solid; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:14px; font-weight:700; flex:none; }
+  .dr-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dr-count{ font-size:12px; color:var(--c-faint); }
+  .dr-foot{ display:flex; justify-content:space-between; gap:8px; padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top:1px solid var(--c-border); background:#f8f8f9; }
+  .dr-foot button{ font-size:14px; font-weight:600; color:var(--c-ink); text-decoration:underline; }
+  .hdr-title{ white-space:nowrap; }
+  @media (max-width:767px){
+    .chip-row{ display:none; }
+    .menu-btn{ display:inline-flex; }
+    .mobile-filter{ display:flex; align-items:center; gap:10px; margin:2px 0 10px; }
+    .hdr-dot{ display:none; }
+    .hdr-title{ font-size:15px; overflow:hidden; text-overflow:ellipsis; }
+    .hdr-right{ gap:8px; }
+    .up-txt{ display:none; }
+  }
   .ev-pop{ position:fixed; z-index:35; background:#fff; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06); padding:18px 18px 14px; max-height:80vh; overflow-y:auto; }
   .ev-pop.sheet{ left:0 !important; right:0 !important; bottom:0 !important; top:auto !important; width:auto !important; border-radius:16px 16px 0 0; padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px)); }
   .ev-pop-head{ display:flex; align-items:flex-start; gap:10px; }
@@ -801,13 +830,14 @@ function render(){
 
   app.innerHTML = `
     <header class="topbar">
-      <div class="flex items-center justify-between px-4 py-3 max-w mx-auto">
-        <div class="flex items-center gap-2">
-          <div style="width:10px;height:10px;border-radius:999px;background:var(--c-forest)"></div>
-          <h1 class="font-display text-lg font-semibold">지티알업무캘린더</h1>
+      <div class="flex items-center justify-between px-4 py-3 max-w mx-auto" style="gap:8px;">
+        <div class="flex items-center gap-2 hdr-left" style="min-width:0;">
+          <button class="menu-btn" data-action="open-drawer" aria-label="메뉴">☰</button>
+          <div class="hdr-dot" style="width:10px;height:10px;border-radius:999px;background:var(--c-forest)"></div>
+          <h1 class="font-display text-lg font-semibold hdr-title">지티알업무캘린더</h1>
         </div>
-        <div class="flex items-center gap-3">
-          ${upcoming>0 ? `<div class="flex items-center gap-1 text-danger text-xs font-mono bg-danger-soft" style="padding:4px 10px;border-radius:999px;">🔔 ${upcoming}건 임박</div>` : ""}
+        <div class="flex items-center gap-3 hdr-right" style="flex:none;">
+          ${upcoming>0 ? `<div class="flex items-center gap-1 text-danger text-xs font-mono bg-danger-soft" style="padding:4px 10px;border-radius:999px;">🔔 ${upcoming}<span class="up-txt">건 임박</span></div>` : ""}
           <button class="btn-soft" style="padding:8px 12px;" data-action="open-search">🔍</button>
           <button class="btn-forest flex items-center gap-1" data-action="open-new-item">＋ 새 건</button>
         </div>
@@ -825,6 +855,7 @@ function render(){
     </div>
 
     <main class="max-w mx-auto px-4 app-main ${viewMode==="calendar"?"cal-mode":""}">
+      ${activeCat!=="all" ? (()=>{ const c = categories.find(x=>x.id===activeCat); return c ? `<div class="mobile-filter"><span class="mf-chip" style="background:${c.color};">${esc(c.name)}</span><button data-action="clear-cat">✕ 전체 보기</button></div>` : ""; })() : ""}
       ${viewMode==="calendar" ? renderToolbarHTML() : ""}
       <div id="main-body" class="${viewMode==="calendar"?"cal-mode-body":""}"></div>
     </main>
@@ -1579,6 +1610,10 @@ function attachGlobalHandlers(){
       }
     });
   });
+  const openDrawerBtn = document.querySelector('[data-action="open-drawer"]');
+  if(openDrawerBtn) openDrawerBtn.addEventListener("click", ()=> openDrawer());
+  const clearCatBtn = document.querySelector('[data-action="clear-cat"]');
+  if(clearCatBtn) clearCatBtn.addEventListener("click", ()=>{ activeCat = "all"; render(); });
   const openNewItemBtn = document.querySelector('[data-action="open-new-item"]');
   if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
   const openSearchBtn = document.querySelector('[data-action="open-search"]');
@@ -2634,6 +2669,50 @@ function startPolling(){
       }
     }catch(e){ /* 일시적인 네트워크 오류는 무시하고 다음 주기에 재시도 */ }
   }, 5000);
+}
+
+/* ---------- 모바일 메뉴 (카테고리 목록) ---------- */
+function openDrawer(){
+  closeAllModals();
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop drawer";
+  const row = (id, name, color, count)=>{
+    const on = activeCat===id;
+    return `<button class="dr-row ${on?"on":""}" data-cat="${id}">
+      <span class="dr-box" style="border-color:${color};background:${on?color:"#fff"};">${on?"✓":""}</span>
+      <span class="dr-name">${esc(name)}</span><span class="dr-count">${count}</span></button>`;
+  };
+  backdrop.innerHTML = `
+    <div class="drawer-panel">
+      <div class="dr-head">
+        <div class="dr-title">지티알업무캘린더</div>
+        <button class="dr-x" data-action="close-modal" aria-label="닫기">✕</button>
+      </div>
+      <div class="dr-section">카테고리</div>
+      <div class="dr-list">
+        ${row("all", "전체", "#2b2f36", items.length)}
+        ${categories.map(c=> row(c.id, c.name, c.color, items.filter(i=>i.category_id===c.id).length)).join("")}
+      </div>
+      <div class="dr-foot">
+        <button data-dr="manage">🏷 카테고리 관리</button>
+        ${currentUser===MASTER_NAME ? `<button data-dr="users">👤 회원 관리</button>` : ""}
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  layerOpened();
+  setupBackdropClose(backdrop, requestClose);
+  backdrop.querySelector('[data-action="close-modal"]').addEventListener("click", requestClose);
+  backdrop.querySelectorAll(".dr-row").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      activeCat = btn.dataset.cat;
+      requestClose();          // 메뉴를 닫으면서(뒤로가기 한 칸 정리) 새 카테고리로 다시 그림
+    });
+  });
+  // 메뉴가 쓰던 뒤로가기 한 칸을 관리 창이 이어받음 (isRefresh=true → 새 칸을 쌓지 않음)
+  const manage = backdrop.querySelector('[data-dr="manage"]');
+  if(manage) manage.addEventListener("click", ()=> openCategoryManagerModal(true));
+  const users = backdrop.querySelector('[data-dr="users"]');
+  if(users) users.addEventListener("click", ()=> openUserManagerModal(true));
 }
 
 /* ---------- 일정 작은 창 (달력에서 일정을 누르면 먼저 뜸) ---------- */
