@@ -174,6 +174,10 @@
   .log-edit-btn{ font-size:11px; color:var(--c-muted); text-decoration:underline; padding:0 2px; cursor:pointer; }
   .log-date-link{ font:inherit; color:inherit; text-decoration:underline; cursor:pointer; padding:0; text-align:left; }
   .log-date-link:hover, .log-edit-btn:hover{ color:var(--c-ink); }
+  .rep-custom{ border:1px solid var(--c-border); border-radius:12px; padding:12px; margin:8px 0; background:#fafafa; }
+  .rep-radio{ display:flex; align-items:center; gap:8px; font-size:14px; padding:6px 0; cursor:pointer; }
+  .cal-chip.done, .wk-bar.done, .wk-ev.done{ opacity:.45; text-decoration:line-through; }
+  .pn-card.done .pn-title{ text-decoration:line-through; opacity:.55; }
   .todo-scope .todo-only{ display:none; }
   .todo-scope.todo-mode .todo-only{ display:block; }
   .todo-scope.todo-mode .gen-only{ display:none; }
@@ -643,6 +647,7 @@ async function createItem(payload){
       created_at: now,
       updated_at: now,
     };
+    if(payload.repeatRule) row.repeat_rule = payload.repeatRule;     // 반복 칸이 DB에 없으면 반복을 쓸 때만 오류가 나도록, 값이 있을 때만 보냄
     const created = await apiInsert("items", row);
     items = [created, ...items];
     returnToCalendar();
@@ -806,6 +811,10 @@ async function updateItem(itemId, patch){
       all_day: patch.allDay, time: patch.allDay ? "" : patch.time, end_time: patch.allDay ? "" : (patch.endTime || ""), location: patch.location || "",
       reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
     };
+    if(patch.repeatRule!==undefined){
+      const prev = items.find(i=>i.id===itemId);
+      if(patch.repeatRule || (prev && prev.repeat_rule)) row.repeat_rule = patch.repeatRule || null;
+    }
     const updated = await apiUpdate("items", itemId, row);
     items = items.map(i=>i.id===updated.id?updated:i);
     render();
@@ -997,10 +1006,21 @@ function itemToEvent(item){
   };
 }
 
-function collectCalendarEvents(scopedItems){
+function collectCalendarEvents(scopedItems, range){
   const events = [];
+  const rg = range || calViewRange();
   scopedItems.forEach(item=>{
-    if(item.date){
+    if(item.date && item.repeat_rule){
+      const doneList = item.repeat_rule.done || [];
+      expandRepeat(item.repeat_rule, item.date, rg.from, rg.to).forEach(occ=>{
+        events.push({
+          parentId: item.id, categoryId: item.category_id, title: item.title, subtitle: item.subtitle||"",
+          date: occ, all_day: item.all_day, time: item.time, location: item.location||"",
+          assignees: item.assignees||[], status: item.status, isSub:false, item,
+          repeat:true, occDate:occ, done: doneList.includes(occ),
+        });
+      });
+    } else if(item.date){
       const startD = new Date(item.date + "T00:00:00");
       const endD = item.end_date ? new Date(item.end_date + "T00:00:00") : startD;
       if(endD > startD){
@@ -1051,6 +1071,247 @@ function collectCalendarEvents(scopedItems){
     });
   });
   return events;
+}
+
+/* ==================== 반복 (매일/매주/주중/매월/매년/사용자 설정) ==================== */
+const NTH_LABELS = ["", "첫 번째", "두 번째", "세 번째", "네 번째"];
+function parseISO(iso){ const p = String(iso).split("-").map(Number); return new Date(p[0], p[1]-1, p[2]); }
+
+// 그 달의 n번째 요일 (nth=-1 이면 마지막). 없으면 null
+function nthWeekdayOfMonth(year, month, weekday, nth){
+  const dim = new Date(year, month+1, 0).getDate();
+  if(nth===-1){
+    const last = new Date(year, month, dim);
+    return new Date(year, month, dim - ((last.getDay() - weekday + 7) % 7));
+  }
+  const first = new Date(year, month, 1);
+  const day = 1 + ((weekday - first.getDay() + 7) % 7) + (nth-1)*7;
+  return day <= dim ? new Date(year, month, day) : null;
+}
+
+// 반복 규칙에 따라 [from, to] 사이의 날짜(YYYY-MM-DD) 목록을 만듦. 시작일(anchor) 이전은 만들지 않음
+function expandRepeat(rule, anchorISO, fromISO, toISO, cap){
+  const out = [];
+  if(!rule || !anchorISO) return out;
+  cap = cap || 1000;
+  const anchor = parseISO(anchorISO), from = parseISO(fromISO), to = parseISO(toISO);
+  if(to < anchor) return out;
+  const n = Math.max(1, Number(rule.interval) || 1);
+  const push = (d)=>{ if(d && d>=anchor && d>=from && d<=to && out.length<cap) out.push(toISODate(d)); };
+  const addDays = (d, k)=> new Date(d.getFullYear(), d.getMonth(), d.getDate()+k);
+
+  if(rule.unit==="day"){
+    const diff = Math.round((from - anchor) / 86400000);
+    const k0 = diff>0 ? Math.ceil(diff/n) : 0;
+    for(let d = addDays(anchor, k0*n); d<=to && out.length<cap; d = addDays(d, n)) push(d);
+  } else if(rule.unit==="week"){
+    const wds = [...new Set((rule.weekdays && rule.weekdays.length) ? rule.weekdays : [anchor.getDay()])].sort((a,b)=>a-b);
+    const ws0 = addDays(anchor, -anchor.getDay());                 // 시작일이 속한 주의 일요일
+    const diffWeeks = Math.floor(Math.round((from - ws0) / 86400000) / 7);
+    const k0 = diffWeeks>0 ? Math.floor(diffWeeks/n) : 0;
+    for(let ws = addDays(ws0, k0*n*7); ws<=to && out.length<cap; ws = addDays(ws, n*7)){
+      wds.forEach(w=> push(addDays(ws, w)));
+    }
+  } else if(rule.unit==="month" || rule.unit==="year"){
+    const step = rule.unit==="year" ? 12*n : n;                      // 몇 개월마다
+    const a = anchor.getFullYear()*12 + anchor.getMonth();
+    const f = from.getFullYear()*12 + from.getMonth();
+    let k = f>a ? Math.floor((f-a)/step) : 0;
+    for(let guard=0; guard<5000 && out.length<cap; guard++, k++){
+      const mi = a + k*step, y = Math.floor(mi/12), m = mi%12;
+      if(new Date(y, m, 1) > to) break;
+      let d;
+      if(rule.by==="nth" || rule.by==="last"){
+        d = nthWeekdayOfMonth(y, m, (rule.weekday!==undefined ? rule.weekday : anchor.getDay()), rule.by==="last" ? -1 : (rule.nth||1));
+      } else {
+        // 31일 같은 날짜가 없는 달은 그 달의 마지막 날로
+        const dim = new Date(y, m+1, 0).getDate();
+        d = new Date(y, m, Math.min(anchor.getDate(), dim));
+      }
+      push(d);
+    }
+  }
+  return out;
+}
+
+// 반복 규칙을 사람이 읽는 문장으로
+function repeatLabel(rule, anchorISO){
+  if(!rule) return "";
+  const a = anchorISO ? parseISO(anchorISO) : null;
+  const n = Math.max(1, Number(rule.interval) || 1);
+  const wdName = w => `${WEEKDAYS[w]}요일`;
+  if(rule.unit==="day") return n===1 ? "매일" : `${n}일마다`;
+  if(rule.unit==="week"){
+    const wds = (rule.weekdays && rule.weekdays.length) ? [...rule.weekdays].sort((x,y)=>x-y) : (a ? [a.getDay()] : []);
+    const isWeekdays = wds.join("")==="12345";
+    const names = isWeekdays ? "주중(월~금)" : (wds.length===1 ? wdName(wds[0]) : wds.map(w=>WEEKDAYS[w]).join("·")+"요일");
+    if(n===1) return isWeekdays ? names : `매주 ${names}`;
+    return `${n}주마다 ${names}`;
+  }
+  const head = rule.unit==="year" ? (n===1 ? "매년" : `${n}년마다`) : (n===1 ? "매월" : `${n}개월마다`);
+  const mp = (rule.unit==="year" && a) ? `${a.getMonth()+1}월 ` : "";
+  const wd = rule.weekday!==undefined ? rule.weekday : (a ? a.getDay() : 0);
+  if(rule.by==="nth") return `${head} ${mp}${NTH_LABELS[rule.nth||1]} ${wdName(wd)}`;
+  if(rule.by==="last") return `${head} ${mp}마지막 ${wdName(wd)}`;
+  return `${head} ${mp}${a ? a.getDate()+"일" : ""}`.trim();
+}
+
+// 지금 화면에 보이는 날짜 범위 (월간: 42칸, 주간: 7일) + 선택한 날짜
+function calViewRange(){
+  let from, to;
+  if(calView==="week"){
+    const ws = weekStartOf(monthCursor);
+    from = ws; to = new Date(ws.getFullYear(), ws.getMonth(), ws.getDate()+6);
+  } else {
+    const y = monthCursor.getFullYear(), m = monthCursor.getMonth();
+    const sw = new Date(y, m, 1).getDay();
+    from = new Date(y, m, 1-sw); to = new Date(y, m, 1-sw+41);
+  }
+  let f = toISODate(from), t = toISODate(to);
+  if(selectedDate){ if(selectedDate<f) f = selectedDate; if(selectedDate>t) t = selectedDate; }
+  return { from:f, to:t };
+}
+
+// 반복 입력 UI (할 일 양식 안에서 사용)
+function repeatBlockHTML(){
+  return `
+    <label class="label">반복</label>
+    <select class="input rep-select mb-1">
+      <option value="none">반복 안 함</option>
+      <option value="day">매일</option>
+      <option value="week">매주</option>
+      <option value="weekday">주중</option>
+      <option value="month">매월</option>
+      <option value="year">매년</option>
+      <option value="custom">사용자 설정</option>
+    </select>
+    <div class="rep-custom hidden">
+      <label class="label">다음 주기로 반복</label>
+      <div class="flex gap-2 mb-3">
+        <input type="number" min="1" max="99" value="1" class="input rep-n" style="width:76px;" />
+        <select class="input rep-unit" style="flex:1;">
+          <option value="day">일</option><option value="week">주</option><option value="month">개월</option><option value="year">년</option>
+        </select>
+      </div>
+      <div class="rep-cond"></div>
+    </div>
+    <p class="rep-summary text-11 text-faint mb-3" style="min-height:14px;"></p>`;
+}
+
+function setupRepeatUI(root, getDate, setDate, initialRule){
+  const q = s => root.querySelector(s);
+  const sel = q(".rep-select"), custom = q(".rep-custom"), nEl = q(".rep-n"), unitEl = q(".rep-unit"), condEl = q(".rep-cond"), sumEl = q(".rep-summary");
+  const radioName = uid("rep");
+  const st = { weekdays:null, by:"date" };       // weekdays=null 이면 기한의 요일을 따라감
+
+  const anchorDate = ()=>{ const iso = getDate(); return iso ? parseISO(iso) : null; };
+  function byOptions(a){
+    const dim = new Date(a.getFullYear(), a.getMonth()+1, 0).getDate();
+    const nth = Math.ceil(a.getDate()/7);
+    const wd = `${WEEKDAYS[a.getDay()]}요일`;
+    const mp = unitEl.value==="year" ? `${a.getMonth()+1}월 ` : "";
+    const opts = [{ v:"date", t:`${mp}${a.getDate()}일` }];
+    if(nth<=4) opts.push({ v:"nth", t:`${mp}${NTH_LABELS[nth]} ${wd}` });
+    if(a.getDate()+7>dim) opts.push({ v:"last", t:`${mp}마지막 ${wd}` });
+    return opts;
+  }
+  function presetRule(v, a){
+    if(v==="day") return { unit:"day", interval:1 };
+    if(v==="week") return { unit:"week", interval:1, weekdays:[a.getDay()] };
+    if(v==="weekday") return { unit:"week", interval:1, weekdays:[1,2,3,4,5] };
+    if(v==="month") return { unit:"month", interval:1, by:"date" };
+    if(v==="year") return { unit:"year", interval:1, by:"date" };
+    return null;
+  }
+  function getRule(){
+    const a = anchorDate(), v = sel.value;
+    if(v==="none" || !a) return null;
+    let rule;
+    if(v!=="custom") rule = presetRule(v, a);
+    else {
+      const n = Math.min(99, Math.max(1, parseInt(nEl.value, 10) || 1));
+      const unit = unitEl.value;
+      rule = { unit, interval:n };
+      if(unit==="week") rule.weekdays = (st.weekdays && st.weekdays.length) ? [...st.weekdays].sort((x,y)=>x-y) : [a.getDay()];
+      if(unit==="month" || unit==="year"){
+        const by = byOptions(a).some(o=>o.v===st.by) ? st.by : "date";
+        rule.by = by;
+        if(by==="nth"){ rule.nth = Math.ceil(a.getDate()/7); rule.weekday = a.getDay(); }
+        if(by==="last"){ rule.weekday = a.getDay(); }
+      }
+    }
+    if(initialRule && initialRule.done && initialRule.done.length) rule.done = [...initialRule.done];
+    return rule;
+  }
+  function renderCond(){
+    const a = anchorDate(), unit = unitEl.value;
+    if(!a || sel.value!=="custom"){ condEl.innerHTML = ""; return; }
+    if(unit==="week"){
+      const cur = new Set((st.weekdays && st.weekdays.length) ? st.weekdays : [a.getDay()]);
+      condEl.innerHTML = `<label class="label">반복 요일</label><div class="flex flex-wrap gap-2 mb-3">${WEEKDAYS.map((w,i)=>`<button type="button" class="chip rep-wd ${cur.has(i)?"active":""}" data-wd="${i}">${w}</button>`).join("")}</div>`;
+      condEl.querySelectorAll(".rep-wd").forEach(b=> b.addEventListener("click", ()=>{
+        const set = new Set((st.weekdays && st.weekdays.length) ? st.weekdays : [a.getDay()]);
+        const i = Number(b.dataset.wd);
+        if(set.has(i)){ if(set.size>1) set.delete(i); } else set.add(i);
+        st.weekdays = [...set];
+        renderCond(); update();
+      }));
+    } else if(unit==="month" || unit==="year"){
+      const opts = byOptions(a);
+      if(!opts.some(o=>o.v===st.by)) st.by = "date";
+      condEl.innerHTML = `<label class="label">다음 조건으로 반복</label>` + opts.map(o=>`<label class="rep-radio"><input type="radio" name="${radioName}" value="${o.v}" ${st.by===o.v?"checked":""} /> ${esc(o.t)}</label>`).join("");
+      condEl.querySelectorAll("input[type=radio]").forEach(r=> r.addEventListener("change", ()=>{ st.by = r.value; update(); }));
+    } else condEl.innerHTML = "";
+  }
+  function update(){
+    custom.classList.toggle("hidden", sel.value!=="custom");
+    if(sel.value==="none"){ sumEl.textContent = ""; return; }
+    if(!anchorDate()){ sumEl.textContent = "기한(날짜)을 정하면 반복할 수 있어요."; return; }
+    sumEl.textContent = `🔁 ${repeatLabel(getRule(), getDate())} 반복`;
+  }
+
+  sel.addEventListener("change", ()=>{
+    if(sel.value!=="none" && !getDate()) setDate(toISODate(new Date()));   // 반복하려면 시작 날짜가 필요 → 오늘로 채움
+    renderCond(); update();
+  });
+  nEl.addEventListener("input", update);
+  unitEl.addEventListener("change", ()=>{ renderCond(); update(); });
+
+  if(initialRule){
+    const a = anchorDate(), r = initialRule, n = r.interval || 1;
+    let v = "custom";
+    if(n===1 && r.unit==="day") v = "day";
+    else if(n===1 && r.unit==="week" && r.weekdays && r.weekdays.join("")==="12345") v = "weekday";
+    else if(n===1 && r.unit==="week" && (!r.weekdays || (r.weekdays.length===1 && a && r.weekdays[0]===a.getDay()))) v = "week";
+    else if(n===1 && r.unit==="month" && (!r.by || r.by==="date")) v = "month";
+    else if(n===1 && r.unit==="year" && (!r.by || r.by==="date")) v = "year";
+    sel.value = v;
+    if(v==="custom"){
+      nEl.value = n; unitEl.value = r.unit;
+      if(r.unit==="week") st.weekdays = r.weekdays ? [...r.weekdays] : null;
+      if(r.by) st.by = r.by;
+    }
+  }
+  renderCond(); update();
+  return { getRule, refresh: ()=>{ renderCond(); update(); } };
+}
+
+// 반복 할 일: 이 날짜만 완료/완료 취소 (완료한 날짜는 규칙 안의 done 목록에 저장)
+async function toggleRepeatDone(itemId, occ){
+  try{
+    const item = items.find(i=>i.id===itemId);
+    if(!item || !item.repeat_rule) return;
+    const rule = { ...item.repeat_rule };
+    const done = new Set(rule.done || []);
+    if(done.has(occ)) done.delete(occ); else done.add(occ);
+    rule.done = [...done].sort();
+    const updated = await apiUpdate("items", itemId, { repeat_rule: rule, updated_at: new Date().toISOString() });
+    items = items.map(i=>i.id===updated.id?updated:i);
+    render();
+  }catch(err){
+    alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
 }
 
 /* ==================== 달력 공통 도우미 ==================== */
@@ -1374,7 +1635,7 @@ function renderCalendarHTML(){
       // 모바일은 글자 자리를 아끼려고 '공유됨(🔗)' 표시는 생략하고 비공개(🔒)만 표시
       const icon = c.desktop ? (shared ? "🔗 " : "🔒 ") : (shared ? "" : "🔒");
       const t = e.subtitle ? `${e.title} · ${e.subtitle}` : e.title;
-      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon}${esc(t)}</div>`;
+      return `<div class="cal-chip${e.done?" done":""}" draggable="${e.repeat?"false":"true"}" data-occ="${e.occDate||""}" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon}${(c.desktop && e.repeat) ? "↻ " : ""}${esc(t)}</div>`;
     }).join("");
     const moreHtml = moreN>0 ? `<div class="cal-chip-more">+${moreN}개</div>` : "";
     const laneSpacer = lanes ? `<div style="height:calc(${lanes} * var(--line-h));"></div>` : "";
@@ -1421,8 +1682,8 @@ function renderPanelCardHTML(ev){
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? (ev.item.logs[ev.item.logs.length-1].content||"") : "");
   const shared = ev.assignees && ev.assignees.length>0;
   return `
-    <div class="pn-card" style="border-left-color:${cat.color};" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}">
-      <div class="pn-title">${shared?"🔗":"🔒"} ${esc(t)}</div>
+    <div class="pn-card${ev.done?" done":""}" style="border-left-color:${cat.color};" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" data-occ="${ev.occDate||""}">
+      <div class="pn-title">${shared?"🔗":"🔒"} ${ev.repeat?"↻ ":""}${esc(t)}</div>
       <div class="pn-sub">${esc(panelTimeLabel(ev))}</div>
       ${ev.location ? `<div class="pn-meta">${locLink(ev.location)}</div>` : ""}
       ${preview ? `<div class="pn-meta">${esc(preview.length>80 ? preview.slice(0,80)+"…" : preview)}</div>` : ""}
@@ -1446,7 +1707,7 @@ function renderDayPanelHTML(agendaItems){
 /* ==================== 주간 보기 ==================== */
 function weekHourPx(){ return window.innerWidth>=768 ? 56 : 48; }
 
-function gatherEntries(scopedItems){
+function gatherEntries(scopedItems, range){
   const out = [];
   const push = (item, src, isSub, subtitle, log)=>{
     if(!src.date) return;
@@ -1458,7 +1719,17 @@ function gatherEntries(scopedItems){
     });
   };
   scopedItems.forEach(item=>{
-    push(item, item, false, item.subtitle, null);
+    if(item.date && item.repeat_rule){
+      const rg = range || calViewRange();
+      const doneList = item.repeat_rule.done || [];
+      expandRepeat(item.repeat_rule, item.date, rg.from, rg.to).forEach(occ=>{
+        out.push({
+          parentId:item.id, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"",
+          start:occ, end:occ, timed: item.all_day===false && !!item.time, time:item.time||"", endTime:item.end_time||"",
+          assignees: item.assignees||[], isSub:false, item, log:null, occ, done: doneList.includes(occ),
+        });
+      });
+    } else push(item, item, false, item.subtitle, null);
     (item.logs||[]).forEach(log=> push(item, log, true, log.subtitle, log));
   });
   return out;
@@ -1495,7 +1766,7 @@ function renderWeekHTML(scoped){
   const days = Array.from({length:7}, (_,i)=>{ const d = new Date(ws); d.setDate(ws.getDate()+i); return d; });
   const isos = days.map(toISODate);
   const todayISO = toISODate(new Date());
-  const entries = gatherEntries(scoped);
+  const entries = gatherEntries(scoped, { from:isos[0], to:isos[6] });
 
   const allDay = [];
   const timedByDay = isos.map(()=>[]);
@@ -1542,7 +1813,7 @@ function renderWeekHTML(scoped){
     const lr = a.hasStart ? "4px" : "0", rr = a.hasEnd ? "4px" : "0";
     const ml = a.hasStart ? 3 : 0, mr = a.hasEnd ? 3 : 0;
     const t = `${iconOf(a)} ${titleOf(a)}`;
-    return `<div class="wk-bar" data-action="open-pop" data-id="${a.parentId}" data-log-id="${a.log?a.log.id:""}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${esc(t)}</div>`;
+    return `<div class="wk-bar${a.done?" done":""}" data-action="open-pop" data-id="${a.parentId}" data-log-id="${a.log?a.log.id:""}" data-occ="${a.occ||""}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${esc(t)}</div>`;
   }).join("");
 
   const hlabels = Array.from({length:23}, (_,k)=>{
@@ -1560,7 +1831,7 @@ function renderWeekHTML(scoped){
       const top = ev.startMin/60*hourPx;
       const h = Math.max((ev.endMin-ev.startMin)/60*hourPx, 22);
       const tm = `${fmtTime12(ev.time)}${ev.endTime ? ` ~ ${fmtTime12(ev.endTime)}` : ""}`;
-      return `<div class="wk-ev" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" style="top:${top}px;height:${h}px;left:calc(${ev.col} / ${ev.cols} * 100% + 1px);width:calc(100% / ${ev.cols} - 2px);background:${color};" title="${esc(titleOf(ev))} ${tm}">
+      return `<div class="wk-ev${ev.done?" done":""}" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" data-occ="${ev.occ||""}" style="top:${top}px;height:${h}px;left:calc(${ev.col} / ${ev.cols} * 100% + 1px);width:calc(100% / ${ev.cols} - 2px);background:${color};" title="${esc(titleOf(ev))} ${tm}">
         <div class="t">${iconOf(ev)} ${esc(titleOf(ev))}</div><div class="s">${tm}</div></div>`;
     }).join("");
     const nowLine = isos[i]===todayISO ? `<div class="wk-now" style="top:${nowMin/60*hourPx}px;"></div>` : "";
@@ -1583,8 +1854,8 @@ function renderWeekHTML(scoped){
 function renderAgendaCardHTML(ev, danger){
   const cat = catById(ev.categoryId);
   const borderColor = danger ? "var(--c-danger)" : cat.color;
-  const titleColor = danger ? "color:var(--c-danger);" : "";
-  const displayTitle = ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title;
+  const titleColor = (danger ? "color:var(--c-danger);" : "") + (ev.done ? "text-decoration:line-through;opacity:.6;" : "");
+  const displayTitle = (ev.repeat ? "↻ " : "") + (ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title);
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
   const deleteBtn = !ev.isSub ? `<button class="text-faint" data-action="delete-item" data-id="${ev.parentId}" title="삭제">🗑</button>` : "";
   const isShared = ev.assignees && ev.assignees.length>0;
@@ -1658,7 +1929,7 @@ function bindMainBodyEvents(){
   document.querySelectorAll('[data-action="open-pop"]').forEach(el=>{
     el.addEventListener("click", (e)=>{
       e.stopPropagation();
-      openEventPopover(el.dataset.id, el.dataset.logId||"", e);
+      openEventPopover(el.dataset.id, el.dataset.logId||"", e, el.dataset.occ||"");
     });
   });
   document.querySelectorAll('[data-action="delete-item"]').forEach(el=>{
@@ -1823,6 +2094,7 @@ function renderDetailPage(){
               <span>${item.assignees?.length ? `🔗 공유됨` : `🔒 비공개 (본인만 볼 수 있음)`}</span>
               ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
+              ${item.repeat_rule ? `<span>🔁 ${esc(repeatLabel(item.repeat_rule, item.date))} 반복</span>` : ""}
               ${item.location ? `<span>${locLink(item.location)}</span>` : ""}
               ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
               ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(a)}">${esc(a.slice(0,1))}</span>`).join(" ")} ${item.assignees.map(esc).join(", ")}</span>` : ""}
@@ -1993,6 +2265,7 @@ function openNewItemModal(initialDate){
   let selectedCategoryId = defaultCat;
   let assignees = [];
   let reminderEditor = null;
+  let repeatUI = null;
 
   function renderCaseSearch(){
     const wrap = backdrop.querySelector("#case-search-wrap");
@@ -2085,6 +2358,7 @@ function openNewItemModal(initialDate){
             <input type="time" id="f-todo-time" class="input" style="width:120px;" />
           </div>
           <p class="text-11 text-faint mb-3">날짜를 비워두면 '기한 없음'이에요. 시간은 선택이에요.</p>
+          ${repeatBlockHTML()}
         </div>
         <div class="gen-only">
         <label class="label">제목</label>
@@ -2157,6 +2431,13 @@ function openNewItemModal(initialDate){
       });
       refreshCatPicker();
       applyTodoMode();
+      repeatUI = setupRepeatUI(
+        fieldsEl.querySelector(".todo-only"),
+        ()=> backdrop.querySelector("#f-todo-date").value,
+        (iso)=>{ backdrop.querySelector("#f-todo-date").value = iso; },
+        null
+      );
+      backdrop.querySelector("#f-todo-date").addEventListener("input", ()=> repeatUI.refresh());
     }
 
     backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
@@ -2243,6 +2524,7 @@ function openNewItemModal(initialDate){
         reminders: reminderEditor.get(),
         assignees,
         firstNote: "",
+        repeatRule: due && repeatUI ? repeatUI.getRule() : null,
       });
     } else {
       const title = backdrop.querySelector("#f-title").value.trim();
@@ -2430,6 +2712,7 @@ function openEditItemModal(item){
             <input type="time" id="f-todo-time" class="input" style="width:120px;" value="${(item.all_day===false && item.time) ? item.time : ""}" />
           </div>
           <p class="text-11 text-faint mb-3">날짜를 비워두면 '기한 없음'이에요. 시간은 선택이에요.</p>
+          ${repeatBlockHTML()}
         </div>
         <div class="gen-only">
       <label class="label">제목</label>
@@ -2528,7 +2811,7 @@ function openEditItemModal(item){
   let editSnapshot = null;
   const readEditFields = ()=>{
     const v = sel => { const e = backdrop.querySelector(sel); return e ? e.value : ""; };
-    return JSON.stringify([ selectedCategoryId, v("#f-title"), v("#f-subtitle"), v("#f-date"), v("#f-end-date"), v("#f-location"), v("#f-todo-text"), v("#f-todo-date"), v("#f-todo-time"), assignees.join("|"), (typeof reminderEditor!=="undefined" && reminderEditor) ? reminderEditor.get() : null ]);
+    return JSON.stringify([ selectedCategoryId, v("#f-title"), v("#f-subtitle"), v("#f-date"), v("#f-end-date"), v("#f-location"), v("#f-todo-text"), v("#f-todo-date"), v("#f-todo-time"), assignees.join("|"), (typeof reminderEditor!=="undefined" && reminderEditor) ? reminderEditor.get() : null, (typeof repeatUI!=="undefined" && repeatUI) ? repeatUI.getRule() : null ]);
   };
   const editIsDirty = ()=> editSnapshot!==null && readEditFields()!==editSnapshot;
   renderEditLogTimeline();
@@ -2575,6 +2858,13 @@ function openEditItemModal(item){
   }
   renderAssigneeChips();
   const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(item));
+  const repeatUI = setupRepeatUI(
+    editFieldsEl.querySelector(".todo-only"),
+    ()=> backdrop.querySelector("#f-todo-date").value,
+    (iso)=>{ backdrop.querySelector("#f-todo-date").value = iso; },
+    item.repeat_rule || null
+  );
+  backdrop.querySelector("#f-todo-date").addEventListener("input", ()=> repeatUI.refresh());
   editSnapshot = readEditFields();
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
@@ -2615,18 +2905,20 @@ function openEditItemModal(item){
       if(!text) return;
       const due = backdrop.querySelector("#f-todo-date").value;
       const dueTime = due ? backdrop.querySelector("#f-todo-time").value : "";
+      const repRule = due ? repeatUI.getRule() : null;
       updateItem(item.id, {
         categoryId: selectedCategoryId,
         title: text,
         subtitle: item.subtitle || "",                                   // 할일 입력란에 없는 값은 기존 것을 그대로 보존
         date: due,
-        endDate: (item.end_date && due===item.date) ? item.end_date : "",
+        endDate: (!repRule && item.end_date && due===item.date) ? item.end_date : "",
         allDay: !dueTime,
         time: dueTime,
         endTime: (dueTime && dueTime===item.time) ? (item.end_time||"") : "",
         location: item.location || "",
         reminders: reminderEditor.get(),
         assignees,
+        repeatRule: repRule,
       });
       returnToCalendar();
       return;
@@ -3126,9 +3418,11 @@ function popWhen(src){
   if(multi) return `${d1} ${t1} ~ ${fmtLongDate(src.end_date)}${t2?` ${t2}`:""}`;
   return `${d1} ${t1}${t2?` ~ ${t2}`:""}`;
 }
-function popoverHTML(item, logId){
+function popoverHTML(item, logId, occ){
   const log = logId ? (item.logs||[]).find(l=>l.id===logId) : null;
-  const src = log || item;
+  const isOcc = !log && !!occ && !!item.repeat_rule;
+  const isDone = isOcc && (item.repeat_rule.done||[]).includes(occ);
+  const src = log || (isOcc ? { ...item, date: occ, end_date: null } : item);
   const cat = catById(item.category_id);
   const sub = log ? (log.subtitle||"") : (item.subtitle||"");
   const title = sub ? `${item.title} · ${sub}` : item.title;
@@ -3143,12 +3437,14 @@ function popoverHTML(item, logId){
       <button class="ev-pop-x" data-pop="close" aria-label="닫기">✕</button>
     </div>
     ${row("🕒", esc(src.date ? popWhen(src) : "날짜 없음"))}
+    ${(!log && item.repeat_rule) ? row("🔁", esc(repeatLabel(item.repeat_rule, item.date) + " 반복") + (isDone ? " · <b>이 날짜 완료</b>" : "")) : ""}
     ${src.location ? row("📍", locLink(src.location, false)) : ""}
     ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(esc).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
     ${rem ? row("🔔", esc(rem)) : ""}
     ${row("🏷", `${esc(cat.name)} · ${esc(item.status||"진행중")}`)}
     ${memo ? row("📝", `<span class="ev-pop-memo">${esc(memo.length>100 ? memo.slice(0,100)+"…" : memo)}</span>`) : ""}
     <div class="ev-pop-actions">
+      ${isOcc ? `<button data-pop="done">${isDone ? "완료 취소" : "이 날짜 완료"}</button>` : ""}
       ${log ? `<button data-pop="open">건 열기</button>` : `<button data-pop="delete">삭제</button>`}
       <button data-pop="edit">수정</button>
     </div>`;
@@ -3180,7 +3476,7 @@ function closePopover(){
   pendingPopBack++;
   try{ history.back(); }catch(e){ pendingPopBack--; }
 }
-function openEventPopover(itemId, logId, ev){
+function openEventPopover(itemId, logId, ev, occ){
   const item = items.find(i=>i.id===itemId);
   if(!item) return;
   if(!popoverEl){
@@ -3190,12 +3486,15 @@ function openEventPopover(itemId, logId, ev){
     layerOpened();
   }
   popoverItemId = itemId;
-  popoverEl.innerHTML = popoverHTML(item, logId);
+  popoverEl.innerHTML = popoverHTML(item, logId, occ);
   popoverEl.querySelector('[data-pop="close"]').addEventListener("click", closePopover);
   const del = popoverEl.querySelector('[data-pop="delete"]');
   if(del) del.addEventListener("click", ()=>{
-    if(confirm(`"${item.title}" 건을 삭제할까요?`)){ closePopover(); deleteItem(item.id); }
+    const msg = item.repeat_rule ? `"${item.title}" 반복 할 일 전체(모든 날짜)를 삭제할까요?` : `"${item.title}" 건을 삭제할까요?`;
+    if(confirm(msg)){ closePopover(); deleteItem(item.id); }
   });
+  const doneBtn = popoverEl.querySelector('[data-pop="done"]');
+  if(doneBtn) doneBtn.addEventListener("click", ()=>{ closePopover(); toggleRepeatDone(item.id, occ); });
   const logObj = logId ? (item.logs||[]).find(l=>l.id===logId) : null;
   const openBtn = popoverEl.querySelector('[data-pop="open"]');
   if(openBtn) openBtn.addEventListener("click", ()=> openDetailFromPopover(item.id));
