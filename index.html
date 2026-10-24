@@ -109,7 +109,7 @@
   .cal-grid{ border:1px solid var(--c-border); border-radius:14px; overflow:hidden; background:#fff; }
   .cal-weekdays{ display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:11px; color:var(--c-faint); padding:6px 0; border-bottom:1px solid var(--c-border); }
   .cal-weekdays div:first-child{ color:var(--c-danger); }
-  .cal-body{ display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:repeat(6,88px); position:relative; --line-h:17px; --daynum-h:19px; --pad-top:3px; }
+  .cal-body{ display:grid; grid-template-columns:repeat(7,1fr); grid-template-rows:repeat(6,var(--row-h,88px)); position:relative; --line-h:17px; --daynum-h:19px; --pad-top:3px; }
   .cal-cell{ min-height:0; border-bottom:1px solid var(--c-border); border-right:1px solid var(--c-border); padding:var(--pad-top) 3px 0 3px; cursor:pointer; overflow:hidden; text-align:left; }
   .cal-cell.selected{ background:#f5f6f8; }
   .cal-cell.empty{ cursor:default; }
@@ -158,7 +158,22 @@
     .hdr-title{ font-size:15px; overflow:hidden; text-overflow:ellipsis; }
     .hdr-right{ gap:8px; }
     .up-txt{ display:none; }
+    .topbar > div{ padding-top:8px; padding-bottom:8px; }
+    .app-main.cal-mode{ padding-left:0; padding-right:0; }
+    .cal-toolbar{ padding:0 10px; }
+    .mobile-filter{ padding:0 12px; }
+    .mobile-agenda{ padding:0 14px; }
+    .cal-main > .cal-grid{ border-left:0; border-right:0; border-radius:0; }
+    .cal-cell{ padding:var(--pad-top) 1px 0 1px; }
+    .cal-cell .day-num{ padding-left:3px; }
+    .cal-chip{ padding:0 2px; border-radius:2px; text-overflow:clip; font-size:10px; }
+    .cal-range-bar{ padding:0 2px; text-overflow:clip; font-size:10px; }
+    .cal-chip-more{ padding:0 3px; }
+    .wk-wrap{ border-left:0; border-right:0; border-radius:0; }
   }
+  .cat-move{ display:inline-flex; flex-direction:column; flex:none; }
+  .cat-move button{ font-size:10px; line-height:1; padding:3px 6px; color:var(--c-muted); }
+  .cat-move button:disabled{ opacity:.25; cursor:default; }
   .ev-pop{ position:fixed; z-index:35; background:#fff; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06); padding:18px 18px 14px; max-height:80vh; overflow-y:auto; }
   .ev-pop.sheet{ left:0 !important; right:0 !important; bottom:0 !important; top:auto !important; width:auto !important; border-radius:16px 16px 0 0; padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px)); }
   .ev-pop-head{ display:flex; align-items:flex-start; gap:10px; }
@@ -339,6 +354,10 @@ try{ showDayPanel = localStorage.getItem("ptk_panel") !== "0"; }catch(e){}
 let listStatus = "진행중";        // 목록 보기의 상태 탭
 let calRowH = 0, calCapUsed = 0, calRerenders = 0;
 let weekScrollTop = null;
+let calRowHM = 0;                // 모바일 달력 한 줄 높이(화면에 맞춰 재서 저장)
+let listOrder = { "진행중":"asc", "완료":"desc", "보류":"asc" };   // 목록 정렬: desc=최신순, asc=이전순 (탭별로 기억)
+try{ const o = JSON.parse(localStorage.getItem("ptk_listorder")||"null"); if(o) listOrder = { ...listOrder, ...o }; }catch(e){}
+let catSortSupported = true;     // categories.sort_order 컬럼이 있는지
 
 /* ---------- 안드로이드 하드웨어 뒤로가기 대응 ---------- */
 // 모달/상세화면을 열 때마다 history에 한 겹씩 쌓고, 뒤로가기(하드웨어 버튼 포함)를
@@ -569,9 +588,21 @@ function isVisibleToMe(item){
   return false;
 }
 
+// 카테고리를 순서(sort_order) 기준으로 가져옴. 컬럼이 아직 없으면 예전 방식(만든 순서)으로 되돌림
+async function fetchCategories(){
+  try{
+    const rows = await apiGet("categories", "&order=sort_order.asc.nullslast,created_at.asc");
+    catSortSupported = true;
+    return rows;
+  }catch(e){
+    catSortSupported = false;
+    return apiGet("categories", "&order=created_at.asc");
+  }
+}
+
 async function loadAll(){
   const [cats, allItems] = await Promise.all([
-    apiGet("categories", "&order=created_at.asc"),
+    fetchCategories(),
     apiGet("items", "&order=updated_at.desc"),
   ]);
   categories = cats;
@@ -764,6 +795,7 @@ async function deleteItem(itemId){
 async function createCategory(name, color){
   try{
     const row = { id: uid("cat"), name, color };
+    if(catSortSupported) row.sort_order = Math.max(0, ...categories.map(c=>Number(c.sort_order)||0)) + 1;
     const created = await apiInsert("categories", row);
     categories = [...categories, created];
     render();
@@ -784,6 +816,26 @@ async function updateCategory(id, name, color){
     openCategoryManagerModal(true);
   }catch(err){
     alert("저장에 실패했습니다: " + err.message);
+    console.error(err);
+  }
+}
+
+// 카테고리 순서 바꾸기: 위(-1) / 아래(+1)로 한 칸
+async function moveCategory(id, dir){
+  const idx = categories.findIndex(c=>c.id===id);
+  const j = idx + dir;
+  if(idx<0 || j<0 || j>=categories.length) return;
+  const arr = [...categories];
+  [arr[idx], arr[j]] = [arr[j], arr[idx]];
+  const changed = [];
+  arr.forEach((c,i)=>{ if((Number(c.sort_order)||0) !== i+1) changed.push({ id:c.id, order:i+1 }); });
+  try{
+    await Promise.all(changed.map(ch=> apiUpdate("categories", ch.id, { sort_order: ch.order })));
+    categories = arr.map((c,i)=>({ ...c, sort_order:i+1 }));
+    render();
+    openCategoryManagerModal(true);
+  }catch(err){
+    alert("순서 변경에 실패했습니다: " + err.message);
     console.error(err);
   }
 }
@@ -1054,7 +1106,7 @@ function renderMainBody(overdueInProgress){
     const counts = { "진행중":0, "완료":0, "보류":0 };
     list.forEach(i=>{ const s = statusOf(i); if(counts[s]!==undefined) counts[s]++; });
     const filtered = list.filter(i=> statusOf(i)===listStatus);
-    const desc = listStatus==="완료";
+    const desc = listOrder[listStatus]==="desc";
     const sorted = [...filtered].sort((a,b)=>{
       const da = a.date ? new Date(a.date).getTime() : (desc ? -Infinity : Infinity);
       const db = b.date ? new Date(b.date).getTime() : (desc ? -Infinity : Infinity);
@@ -1086,6 +1138,10 @@ function renderMainBody(overdueInProgress){
           </div>
           <div class="flex items-center gap-2" style="flex-wrap:wrap;">
             <div class="tb-seg">${tabs}</div>
+            <div class="tb-seg">
+              <button class="${desc?"on":""}" data-action="set-listorder" data-o="desc">최신순</button>
+              <button class="${!desc?"on":""}" data-action="set-listorder" data-o="asc">이전순</button>
+            </div>
             <button class="tb-btn" data-action="set-view" data-view="calendar">📅 달력</button>
           </div>
         </div>
@@ -1110,10 +1166,25 @@ function renderMainBody(overdueInProgress){
 }
 
 /* 월간 달력 칸 높이를 실제로 재서, 칸 안에 들어갈 줄 수가 달라지면 한 번 더 그린다 */
+function mobileRowEstimate(){
+  return Math.max(88, Math.min(150, Math.floor((window.innerHeight - 215) / 6)));
+}
 function measureAndRefit(){
   if(viewMode!=="calendar" || calView!=="month") return;
   const c = calConsts();
-  if(!c.desktop) return;
+  if(!c.desktop){
+    const body = document.querySelector("#main-body .cal-body");
+    if(!body) return;
+    const top = body.getBoundingClientRect().top + window.scrollY;
+    if(!(top>0)) return;
+    const h = Math.max(88, Math.min(150, Math.floor((window.innerHeight - top - 10) / 6)));
+    if(Math.abs(h - calRowHM) > 2 && calRerenders < 2){
+      calRowHM = h; calRerenders++; renderMainBody();
+    } else {
+      calRerenders = 0;
+    }
+    return;
+  }
   const cell = document.querySelector("#main-body .cal-cell");
   if(!cell) return;
   const h = cell.getBoundingClientRect().height;
@@ -1201,7 +1272,7 @@ function buildRangeSegments(scopedItems, gridFirst, maxLanes){
 
 function renderCalendarHTML(){
   const c = calConsts();
-  const rowH = c.desktop ? (calRowH || estimateRowH(c)) : 88;
+  const rowH = c.desktop ? (calRowH || estimateRowH(c)) : (calRowHM || mobileRowEstimate());
   const cap = Math.max(1, Math.floor((rowH - c.PAD - c.DAY)/c.LINE));
   calCapUsed = cap;
   const maxLanes = Math.max(1, cap-1);
@@ -1253,9 +1324,10 @@ function renderCalendarHTML(){
     }
     const chipsHtml = shown.map(e=>{
       const shared = e.assignees && e.assignees.length>0;
-      const icon = shared ? "🔗" : "🔒";
+      // 모바일은 글자 자리를 아끼려고 '공유됨(🔗)' 표시는 생략하고 비공개(🔒)만 표시
+      const icon = c.desktop ? (shared ? "🔗 " : "🔒 ") : (shared ? "" : "🔒");
       const t = e.subtitle ? `${e.title} · ${e.subtitle}` : e.title;
-      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon} ${esc(t)}</div>`;
+      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon}${esc(t)}</div>`;
     }).join("");
     const moreHtml = moreN>0 ? `<div class="cal-chip-more">+${moreN}개</div>` : "";
     const laneSpacer = lanes ? `<div style="height:calc(${lanes} * var(--line-h));"></div>` : "";
@@ -1270,7 +1342,8 @@ function renderCalendarHTML(){
     const color = catById(seg.categoryId).color;
     const lr = seg.hasStart ? "4px" : "0";
     const rr = seg.hasEnd ? "4px" : "0";
-    const ml = seg.hasStart ? 3 : 0, mr = seg.hasEnd ? 3 : 0;
+    const bm = c.desktop ? 3 : 1;
+    const ml = seg.hasStart ? bm : 0, mr = seg.hasEnd ? bm : 0;
     return `<div class="cal-range-bar" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-pop" data-id="${seg.parentId}"
       style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin:calc(var(--pad-top) + var(--daynum-h) + ${seg.lane} * var(--line-h)) ${mr}px 0 ${ml}px; background:${color}; border-radius:${lr} ${rr} ${rr} ${lr};" title="${esc(seg.fullLabel)}">${esc(seg.fullLabel)}</div>`;
   }).join("");
@@ -1278,7 +1351,7 @@ function renderCalendarHTML(){
   return `
     <div class="cal-grid">
       <div class="cal-weekdays">${WEEKDAYS.map(w=>`<div>${w}</div>`).join("")}</div>
-      <div class="cal-body">${cells}${barsHtml}</div>
+      <div class="cal-body" style="--row-h:${rowH}px;">${cells}${barsHtml}</div>
     </div>
   `;
 }
@@ -1655,6 +1728,13 @@ function attachGlobalHandlers(){
     try{ localStorage.setItem("ptk_panel", showDayPanel ? "1" : "0"); }catch(e){}
     calRowH = 0;
     render();
+  });
+  document.querySelectorAll('[data-action="set-listorder"]').forEach(el=>{
+    el.addEventListener("click", ()=>{
+      listOrder[listStatus] = el.dataset.o;
+      try{ localStorage.setItem("ptk_listorder", JSON.stringify(listOrder)); }catch(e){}
+      render();
+    });
   });
   document.querySelectorAll('[data-action="set-liststatus"]').forEach(el=>{
     el.addEventListener("click", ()=>{ listStatus = el.dataset.s; render(); });
@@ -2289,11 +2369,18 @@ function openCategoryManagerModal(isRefresh){
 
   function renderCatList(){
     const listEl = backdrop.querySelector("#cat-list");
-    listEl.innerHTML = categories.map(c=>{
+    const note = catSortSupported ? "" : `<p class="text-xs text-faint mb-3">순서를 바꾸려면 Supabase에서 <b>migration-category-order.sql</b>을 한 번 실행해주세요.</p>`;
+    listEl.innerHTML = note + categories.map((c, ci)=>{
       const isDefault = DEFAULT_CAT_IDS.includes(c.id);
       const count = items.filter(i=>i.category_id===c.id).length;
+      const mv = catSortSupported ? `
+          <span class="cat-move">
+            <button type="button" class="cat-up" data-id="${c.id}" ${ci===0?"disabled":""} aria-label="위로">▲</button>
+            <button type="button" class="cat-down" data-id="${c.id}" ${ci===categories.length-1?"disabled":""} aria-label="아래로">▼</button>
+          </span>` : "";
       return `
         <div class="cat-row flex items-center gap-2 mb-2" data-id="${c.id}">
+          ${mv}
           <span style="width:16px;height:16px;border-radius:999px;background:${c.color};flex-shrink:0;"></span>
           <input class="input cat-name-input" value="${esc(c.name)}" style="flex:1;" />
           <input type="color" class="cat-color-input" value="${c.color}" style="width:32px;height:32px;padding:0;border:1px solid var(--c-border);border-radius:8px;" />
@@ -2305,6 +2392,8 @@ function openCategoryManagerModal(isRefresh){
       `;
     }).join("");
 
+    listEl.querySelectorAll(".cat-up").forEach(btn=> btn.addEventListener("click", ()=> moveCategory(btn.dataset.id, -1)));
+    listEl.querySelectorAll(".cat-down").forEach(btn=> btn.addEventListener("click", ()=> moveCategory(btn.dataset.id, 1)));
     listEl.querySelectorAll(".cat-save").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const row = listEl.querySelector(`.cat-row[data-id="${btn.dataset.id}"]`);
@@ -2656,7 +2745,7 @@ function startPolling(){
     if(logDraftEl && logDraftEl.value.trim()) return;
     try{
       const [newCats, rawItems] = await Promise.all([
-        apiGet("categories", "&order=created_at.asc"),
+        fetchCategories(),
         apiGet("items", "&order=updated_at.desc"),
       ]);
       const newItems = rawItems.filter(isVisibleToMe);
