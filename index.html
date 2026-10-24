@@ -130,6 +130,19 @@
   .pn-title{ font-weight:700; font-size:13px; color:var(--c-ink); word-break:break-all; }
   .pn-sub{ font-size:12px; color:var(--c-muted); margin-top:2px; }
   .pn-meta{ font-size:11px; color:var(--c-faint); margin-top:2px; word-break:break-all; }
+  .ev-pop{ position:fixed; z-index:35; background:#fff; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06); padding:18px 18px 14px; max-height:80vh; overflow-y:auto; }
+  .ev-pop.sheet{ left:0 !important; right:0 !important; bottom:0 !important; top:auto !important; width:auto !important; border-radius:16px 16px 0 0; padding-bottom:calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .ev-pop-head{ display:flex; align-items:flex-start; gap:10px; }
+  .ev-pop-dot{ width:14px; height:14px; border-radius:999px; flex:none; margin-top:5px; }
+  .ev-pop-title{ flex:1; min-width:0; font-size:17px; font-weight:700; line-height:1.35; word-break:break-all; }
+  .ev-pop-x{ font-size:20px; line-height:1; padding:2px 6px; color:var(--c-muted); }
+  .ev-pop-row{ display:flex; gap:12px; font-size:13px; color:var(--c-ink); margin-top:12px; align-items:flex-start; }
+  .ev-pop-row .ic{ width:18px; text-align:center; flex:none; }
+  .ev-pop-row > div{ min-width:0; word-break:break-all; }
+  .ev-pop-memo{ color:var(--c-muted); white-space:pre-wrap; }
+  .ev-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .ev-pop-actions button{ background:#f1f2f4; border-radius:8px; padding:9px 22px; font-size:13px; font-weight:600; color:var(--c-ink); }
+  .ev-pop-actions button:hover{ background:#e5e7eb; }
   .loc-link{ color:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
   .loc-link:hover{ color:#03a94d; }
 
@@ -302,10 +315,20 @@ let weekScrollTop = null;
 // 모달/상세화면을 열 때마다 history에 한 겹씩 쌓고, 뒤로가기(하드웨어 버튼 포함)를
 // 누르면 앱을 벗어나는 대신 열려있는 화면(모달 > 상세화면 > 목록보기 순)을 하나씩 닫는다.
 let openLayers = 0;
+let popoverEl = null, popoverItemId = null;   // 일정 작은 창
+let pendingPopBack = 0, deferredPushes = 0;   // 우리가 보낸 뒤로가기가 도착하기 전에 새 칸을 쌓지 않도록 순서를 맞추는 용도
 
 function layerOpened(){
   openLayers++;
+  // 작은 창을 닫느라 보낸 뒤로가기가 아직 도착 전이면, 그게 끝난 뒤에 칸을 쌓음 (동시에 하면 서로 꼬일 수 있음)
+  if(pendingPopBack>0){ deferredPushes++; return; }
   try{ history.pushState({ openLayers }, ""); }catch(e){}
+}
+function flushDeferredPushes(){
+  while(deferredPushes>0){
+    deferredPushes--;
+    try{ history.pushState({ openLayers }, ""); }catch(e){}
+  }
 }
 
 function requestClose(){
@@ -325,6 +348,7 @@ function returnToCalendar(){
 }
 
 function closeTopLayer(){
+  if(popoverEl){ removePopoverDom(); return; }
   if(document.querySelector(".modal-backdrop")){
     closeAllModals();
     render();
@@ -345,6 +369,8 @@ function closeTopLayer(){
 
 window.addEventListener("popstate", ()=>{
   if(openLayers>0) openLayers--;
+  // 코드에서 작은 창을 직접 닫으면서 기록만 한 칸 되돌린 경우: 화면은 이미 정리됐으니 건드리지 않음
+  if(pendingPopBack>0){ pendingPopBack--; if(pendingPopBack===0) flushDeferredPushes(); return; }
   closeTopLayer();
 });
 
@@ -1198,7 +1224,7 @@ function renderCalendarHTML(){
       const shared = e.assignees && e.assignees.length>0;
       const icon = shared ? "🔗" : "🔒";
       const t = e.subtitle ? `${e.title} · ${e.subtitle}` : e.title;
-      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-item" data-id="${e.parentId}" title="${esc(t)}">${icon} ${esc(t)}</div>`;
+      return `<div class="cal-chip" draggable="true" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon} ${esc(t)}</div>`;
     }).join("");
     const moreHtml = moreN>0 ? `<div class="cal-chip-more">+${moreN}개</div>` : "";
     const laneSpacer = lanes ? `<div style="height:calc(${lanes} * var(--line-h));"></div>` : "";
@@ -1214,7 +1240,7 @@ function renderCalendarHTML(){
     const lr = seg.hasStart ? "4px" : "0";
     const rr = seg.hasEnd ? "4px" : "0";
     const ml = seg.hasStart ? 3 : 0, mr = seg.hasEnd ? 3 : 0;
-    return `<div class="cal-range-bar" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-item" data-id="${seg.parentId}"
+    return `<div class="cal-range-bar" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-pop" data-id="${seg.parentId}"
       style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin:calc(var(--pad-top) + var(--daynum-h) + ${seg.lane} * var(--line-h)) ${mr}px 0 ${ml}px; background:${color}; border-radius:${lr} ${rr} ${rr} ${lr};" title="${esc(seg.fullLabel)}">${esc(seg.fullLabel)}</div>`;
   }).join("");
 
@@ -1244,7 +1270,7 @@ function renderPanelCardHTML(ev){
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? (ev.item.logs[ev.item.logs.length-1].content||"") : "");
   const shared = ev.assignees && ev.assignees.length>0;
   return `
-    <div class="pn-card" style="border-left-color:${cat.color};" data-action="open-item" data-id="${ev.parentId}">
+    <div class="pn-card" style="border-left-color:${cat.color};" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}">
       <div class="pn-title">${shared?"🔗":"🔒"} ${esc(t)}</div>
       <div class="pn-sub">${esc(panelTimeLabel(ev))}</div>
       ${ev.location ? `<div class="pn-meta">${locLink(ev.location)}</div>` : ""}
@@ -1365,7 +1391,7 @@ function renderWeekHTML(scoped){
     const lr = a.hasStart ? "4px" : "0", rr = a.hasEnd ? "4px" : "0";
     const ml = a.hasStart ? 3 : 0, mr = a.hasEnd ? 3 : 0;
     const t = `${iconOf(a)} ${titleOf(a)}`;
-    return `<div class="wk-bar" data-action="open-item" data-id="${a.parentId}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${esc(t)}</div>`;
+    return `<div class="wk-bar" data-action="open-pop" data-id="${a.parentId}" data-log-id="${a.log?a.log.id:""}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${esc(t)}</div>`;
   }).join("");
 
   const hlabels = Array.from({length:23}, (_,k)=>{
@@ -1383,7 +1409,7 @@ function renderWeekHTML(scoped){
       const top = ev.startMin/60*hourPx;
       const h = Math.max((ev.endMin-ev.startMin)/60*hourPx, 22);
       const tm = `${fmtTime12(ev.time)}${ev.endTime ? ` ~ ${fmtTime12(ev.endTime)}` : ""}`;
-      return `<div class="wk-ev" data-action="open-item" data-id="${ev.parentId}" style="top:${top}px;height:${h}px;left:calc(${ev.col} / ${ev.cols} * 100% + 1px);width:calc(100% / ${ev.cols} - 2px);background:${color};" title="${esc(titleOf(ev))} ${tm}">
+      return `<div class="wk-ev" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" style="top:${top}px;height:${h}px;left:calc(${ev.col} / ${ev.cols} * 100% + 1px);width:calc(100% / ${ev.cols} - 2px);background:${color};" title="${esc(titleOf(ev))} ${tm}">
         <div class="t">${iconOf(ev)} ${esc(titleOf(ev))}</div><div class="s">${tm}</div></div>`;
     }).join("");
     const nowLine = isos[i]===todayISO ? `<div class="wk-now" style="top:${nowMin/60*hourPx}px;"></div>` : "";
@@ -1476,6 +1502,12 @@ function bindMainBodyEvents(){
       selectedItemId = el.dataset.id;
       renderDetailPage();
       if(wasClosed) layerOpened();
+    });
+  });
+  document.querySelectorAll('[data-action="open-pop"]').forEach(el=>{
+    el.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      openEventPopover(el.dataset.id, el.dataset.logId||"", e);
     });
   });
   document.querySelectorAll('[data-action="delete-item"]').forEach(el=>{
@@ -2603,6 +2635,108 @@ function startPolling(){
     }catch(e){ /* 일시적인 네트워크 오류는 무시하고 다음 주기에 재시도 */ }
   }, 5000);
 }
+
+/* ---------- 일정 작은 창 (달력에서 일정을 누르면 먼저 뜸) ---------- */
+function popWhen(src){
+  const multi = src.end_date && src.end_date > src.date;
+  const d1 = fmtLongDate(src.date);
+  if(src.all_day!==false || !src.time){
+    return multi ? `${d1} ~ ${fmtLongDate(src.end_date)}` : `${d1} · 하루 종일`;
+  }
+  const t1 = fmtTime12(src.time), t2 = src.end_time ? fmtTime12(src.end_time) : "";
+  if(multi) return `${d1} ${t1} ~ ${fmtLongDate(src.end_date)}${t2?` ${t2}`:""}`;
+  return `${d1} ${t1}${t2?` ~ ${t2}`:""}`;
+}
+function popoverHTML(item, logId){
+  const log = logId ? (item.logs||[]).find(l=>l.id===logId) : null;
+  const src = log || item;
+  const cat = catById(item.category_id);
+  const sub = log ? (log.subtitle||"") : (item.subtitle||"");
+  const title = sub ? `${item.title} · ${sub}` : item.title;
+  const assignees = src.assignees || [];
+  const rem = reminderSummary(src);
+  const memo = log ? (log.content||"") : ((item.logs && item.logs.length) ? (item.logs[item.logs.length-1].content||"") : "");
+  const row = (ic, html)=> `<div class="ev-pop-row"><span class="ic">${ic}</span><div>${html}</div></div>`;
+  return `
+    <div class="ev-pop-head">
+      <span class="ev-pop-dot" style="background:${cat.color}"></span>
+      <div class="ev-pop-title">${esc(title)}</div>
+      <button class="ev-pop-x" data-pop="close" aria-label="닫기">✕</button>
+    </div>
+    ${row("🕒", esc(src.date ? popWhen(src) : "날짜 없음"))}
+    ${src.location ? row("📍", locLink(src.location, false)) : ""}
+    ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(esc).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
+    ${rem ? row("🔔", esc(rem)) : ""}
+    ${row("🏷", `${esc(cat.name)} · ${esc(item.status||"진행중")}`)}
+    ${memo ? row("📝", `<span class="ev-pop-memo">${esc(memo.length>100 ? memo.slice(0,100)+"…" : memo)}</span>`) : ""}
+    <div class="ev-pop-actions">
+      ${log ? "" : `<button data-pop="delete">삭제</button>`}
+      <button data-pop="edit">수정</button>
+    </div>`;
+}
+function positionPopover(el, ev){
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if(vw < 768){ el.classList.add("sheet"); el.style.left = el.style.top = el.style.width = ""; return; }
+  el.classList.remove("sheet");
+  const w = 340;
+  el.style.width = w + "px";
+  const h = el.offsetHeight || 260;
+  const cx = (ev && ev.clientX) || vw/2, cy = (ev && ev.clientY) || vh/2;
+  let x = cx + 14;
+  if(x + w > vw - 12) x = cx - w - 14;
+  if(x < 12) x = Math.max(12, (vw - w)/2);
+  let y = cy - 40;
+  if(y + h > vh - 12) y = vh - h - 12;
+  if(y < 12) y = 12;
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+}
+function removePopoverDom(){
+  if(popoverEl){ popoverEl.remove(); popoverEl = null; popoverItemId = null; }
+}
+// 코드에서 직접 닫을 때: 화면은 바로 지우고, 뒤로가기 기록만 한 칸 맞춰서 되돌림
+function closePopover(){
+  if(!popoverEl) return;
+  removePopoverDom();
+  pendingPopBack++;
+  try{ history.back(); }catch(e){ pendingPopBack--; }
+}
+function openEventPopover(itemId, logId, ev){
+  const item = items.find(i=>i.id===itemId);
+  if(!item) return;
+  if(!popoverEl){
+    popoverEl = document.createElement("div");
+    popoverEl.className = "ev-pop";
+    document.body.appendChild(popoverEl);
+    layerOpened();
+  }
+  popoverItemId = itemId;
+  popoverEl.innerHTML = popoverHTML(item, logId);
+  popoverEl.querySelector('[data-pop="close"]').addEventListener("click", closePopover);
+  const del = popoverEl.querySelector('[data-pop="delete"]');
+  if(del) del.addEventListener("click", ()=>{
+    if(confirm(`"${item.title}" 건을 삭제할까요?`)){ closePopover(); deleteItem(item.id); }
+  });
+  popoverEl.querySelector('[data-pop="edit"]').addEventListener("click", ()=> openDetailFromPopover(item.id));
+  positionPopover(popoverEl, ev);
+}
+// 수정: 작은 창을 닫고 전체 화면 상세로 (작은 창이 쓰던 뒤로가기 한 칸을 상세 화면이 이어받음)
+function openDetailFromPopover(itemId){
+  removePopoverDom();
+  selectedItemId = itemId;
+  renderDetailPage();
+  try{ history.replaceState({ openLayers }, ""); }catch(e){}
+}
+// 창 밖을 누르면 닫기 (다른 일정을 누른 경우는 창 내용만 바뀌므로 닫지 않음)
+document.addEventListener("click", (e)=>{
+  if(!popoverEl) return;
+  if(popoverEl.contains(e.target)) return;
+  if(e.target.closest && e.target.closest('[data-action="open-pop"]')) return;
+  closePopover();
+}, true);
+document.addEventListener("keydown", (e)=>{
+  if(e.key==="Escape" && popoverEl) closePopover();
+});
 
 /* ---------- 네이버지도 연결 ---------- */
 function naverMapWebUrl(q){ return `https://map.naver.com/p/search/${encodeURIComponent(q)}`; }
