@@ -116,6 +116,7 @@
   .cal-cell .day-num{ height:var(--daynum-h); display:flex; align-items:center; font-size:11px; font-weight:600; }
   .cal-cell .day-num span{ display:inline-flex; align-items:center; justify-content:center; min-width:calc(var(--daynum-h) - 3px); height:calc(var(--daynum-h) - 3px); border-radius:999px; padding:0 3px; }
   .cal-cell.sun .day-num span{ color:var(--c-danger); }
+  .cal-cell.other .day-num span{ color:#aaa597; }
   .cal-cell.today .day-num span{ background:#2b2f36; color:#fff; }
   .cal-chips{ display:block; }
   .cal-chip{ height:calc(var(--line-h) - 2px); line-height:calc(var(--line-h) - 2px); font-size:10px; border-radius:3px; padding:0 4px; color:#fff; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1024,7 +1025,10 @@ function renderMainBody(overdueInProgress){
             <button class="text-sm font-medium text-muted" data-action="set-view" data-view="calendar">← 뒤로</button>
             <h2 class="font-display text-base font-semibold">목록</h2>
           </div>
-          <div class="tb-seg">${tabs}</div>
+          <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+            <div class="tb-seg">${tabs}</div>
+            <button class="tb-btn" data-action="set-view" data-view="calendar">📅 달력</button>
+          </div>
         </div>
         <div class="p-4">
           ${sorted.length===0 ? `
@@ -1073,16 +1077,17 @@ function setupWeekScroll(){
 }
 
 /* ==================== 월간 달력 ==================== */
-function buildRangeSegments(scopedItems, year, month, startWeekday, daysInMonth, maxLanes){
-  const monthFirst = new Date(year, month, 1);
-  const monthLast = new Date(year, month, daysInMonth);
+function dayDiff(a, b){ return Math.round((b - a) / 86400000); }
+
+function buildRangeSegments(scopedItems, gridFirst, maxLanes){
+  const gridLast = new Date(gridFirst.getFullYear(), gridFirst.getMonth(), gridFirst.getDate() + 41);
   const ranges = [];
   scopedItems.forEach(item=>{
-    if(item.date && item.end_date && item.end_date!==item.date && item.end_date>item.date){
+    if(item.date && item.end_date && item.end_date>item.date){
       ranges.push({ start:item.date, end:item.end_date, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"", parentId:item.id, isSub:false, logId:"" });
     }
     (item.logs||[]).forEach(log=>{
-      if(log.date && log.end_date && log.end_date!==log.date && log.end_date>log.date){
+      if(log.date && log.end_date && log.end_date>log.date){
         ranges.push({ start:log.date, end:log.end_date, categoryId:item.category_id, title:item.title, subtitle:log.subtitle||"", parentId:item.id, isSub:true, logId:log.id });
       }
     });
@@ -1092,14 +1097,14 @@ function buildRangeSegments(scopedItems, year, month, startWeekday, daysInMonth,
   ranges.forEach(r=>{
     const s = new Date(r.start+"T00:00:00");
     const e = new Date(r.end+"T00:00:00");
-    if(e < monthFirst || s > monthLast) return;
-    const clipStart = s < monthFirst ? monthFirst : s;
-    const clipEnd = e > monthLast ? monthLast : e;
+    if(e < gridFirst || s > gridLast) return;
+    const clipStart = s < gridFirst ? gridFirst : s;
+    const clipEnd = e > gridLast ? gridLast : e;
     clipped.push({
       ...r,
       trueStart: r.start,
-      clipStartIdx: startWeekday + clipStart.getDate() - 1,
-      clipEndIdx: startWeekday + clipEnd.getDate() - 1,
+      clipStartIdx: dayDiff(gridFirst, clipStart),
+      clipEndIdx: dayDiff(gridFirst, clipEnd),
       isTrueStart: clipStart.getTime()===s.getTime(),
       isTrueEnd: clipEnd.getTime()===e.getTime(),
     });
@@ -1144,16 +1149,15 @@ function renderCalendarHTML(){
 
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const startWeekday = firstDay.getDay();
-  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const startWeekday = new Date(year, month, 1).getDay();
+  const gridFirst = new Date(year, month, 1 - startWeekday);   // 화면 첫 칸 (이전 달 날짜일 수 있음)
   const todayISO = toISODate(new Date());
   const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
   const events = collectCalendarEvents(scoped);
   const byDate = {};
   events.forEach(e=>{ (byDate[e.date] = byDate[e.date]||[]).push(e); });
 
-  const { segments: rangeSegments } = buildRangeSegments(scoped, year, month, startWeekday, daysInMonth, maxLanes);
+  const { segments: rangeSegments } = buildRangeSegments(scoped, gridFirst, maxLanes);
   const visLane = {}, hidRange = {};
   rangeSegments.forEach(seg=>{
     const rowFirstIdx = seg.rowIdx*7;
@@ -1164,15 +1168,13 @@ function renderCalendarHTML(){
     }
   });
 
+  // 항상 6주(42칸). 앞뒤 빈칸도 이전 달/다음 달 날짜로 채워서 바로 선택·등록할 수 있게 함
   let cells = "";
-  for(let i=0;i<startWeekday;i++){
-    const row = Math.floor(i/7)+1, col = (i%7)+1;
-    cells += `<div class="cal-cell empty" style="grid-row:${row};grid-column:${col};"></div>`;
-  }
-  for(let d=1; d<=daysInMonth; d++){
-    const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-    const cellIdx = startWeekday + d - 1;
-    const gridRow = Math.floor(cellIdx/7)+1, gridCol = (cellIdx%7)+1;
+  for(let i=0; i<42; i++){
+    const dt = new Date(year, month, 1 - startWeekday + i);
+    const iso = toISODate(dt);
+    const inMonth = dt.getMonth()===month;
+    const gridRow = Math.floor(i/7)+1, gridCol = (i%7)+1;
     const allDayItems = byDate[iso] || [];
     // 여러 날짜(구간) 일정은 별도의 이어붙인 막대로 그리므로, 이 칸 안 목록에서는 제외
     const dayItems = sortDayEvents(allDayItems.filter(e=>{
@@ -1182,8 +1184,8 @@ function renderCalendarHTML(){
     }));
     const isToday = iso===todayISO;
     const isSelected = iso===selectedDate;
-    const lanes = visLane[cellIdx] || 0;
-    const hiddenR = hidRange[cellIdx] || 0;
+    const lanes = visLane[i] || 0;
+    const hiddenR = hidRange[i] || 0;
     let shown = dayItems, moreN = 0;
     if(lanes + dayItems.length + hiddenR > cap){
       const room = Math.max(0, cap - 1 - lanes);
@@ -1198,16 +1200,11 @@ function renderCalendarHTML(){
     }).join("");
     const moreHtml = moreN>0 ? `<div class="cal-chip-more">+${moreN}개</div>` : "";
     const laneSpacer = lanes ? `<div style="height:calc(${lanes} * var(--line-h));"></div>` : "";
-    cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""} ${(cellIdx%7)===0?"sun":""}" style="grid-row:${gridRow};grid-column:${gridCol};" data-action="pick-date" data-date="${iso}">
-      <div class="day-num"><span>${d}</span></div>
+    const numLabel = (!inMonth && dt.getDate()===1) ? `${dt.getMonth()+1}/1` : dt.getDate();
+    cells += `<div class="cal-cell ${isToday?"today":""} ${isSelected?"selected":""} ${(i%7)===0?"sun":""} ${inMonth?"":"other"}" style="grid-row:${gridRow};grid-column:${gridCol};" data-action="pick-date" data-date="${iso}">
+      <div class="day-num"><span>${numLabel}</span></div>
       <div class="cal-chips">${laneSpacer}${chipsHtml}${moreHtml}</div>
     </div>`;
-  }
-  // 항상 6주(42칸)로 고정해서 달이 바뀌어도 칸 높이가 그대로 유지되게 함
-  const totalCellsSoFar = startWeekday + daysInMonth;
-  for(let i=totalCellsSoFar; i<42; i++){
-    const row = Math.floor(i/7)+1, col = (i%7)+1;
-    cells += `<div class="cal-cell empty" style="grid-row:${row};grid-column:${col};"></div>`;
   }
 
   const barsHtml = rangeSegments.filter(seg=>!seg.hidden).map(seg=>{
@@ -1568,8 +1565,10 @@ function attachGlobalHandlers(){
       if(v===calView) return;
       if(v==="week"){
         const y = monthCursor.getFullYear(), m = monthCursor.getMonth();
-        const prefix = `${y}-${String(m+1).padStart(2,"0")}`;
-        if(selectedDate && selectedDate.slice(0,7)===prefix) monthCursor = new Date(selectedDate+"T00:00:00");
+        const sw = new Date(y, m, 1).getDay();
+        const gFirst = toISODate(new Date(y, m, 1 - sw));
+        const gLast = toISODate(new Date(y, m, 1 - sw + 41));
+        if(selectedDate && selectedDate>=gFirst && selectedDate<=gLast) monthCursor = new Date(selectedDate+"T00:00:00");
         else {
           const t = new Date();
           monthCursor = (t.getFullYear()===y && t.getMonth()===m) ? t : new Date(y, m, 1);
