@@ -848,6 +848,13 @@ async function createCategory(name, color){
 
 const DEFAULT_CAT_IDS = [CAT_SCHEDULE, CAT_TODO, CAT_MEETING, CAT_PROGRESS];
 
+// 이름에 '할일'(또는 '할 일')이 들어간 카테고리는 '할 일 / 기한' 입력 양식을 씀
+// (내부 번호가 아니라 이름 기준이라서, 카테고리 이름을 바꿔도 그 이름을 따라감)
+function isTodoCat(catId){
+  const c = categories.find(x=>x.id===catId);
+  return !!c && /할\s*일/.test(c.name || "");
+}
+
 async function updateCategory(id, name, color){
   try{
     const updated = await apiUpdate("categories", id, { name, color });
@@ -2135,7 +2142,7 @@ function openNewItemModal(initialDate){
 
       // 할일 카테고리는 입력란을 '할 일 / 기한' 형태로 바꿔 보여줌 (입력해 둔 글은 서로 옮겨 담음)
       const applyTodoMode = ()=>{
-        const todo = selectedCategoryId===CAT_TODO;
+        const todo = isTodoCat(selectedCategoryId);
         fieldsEl.classList.toggle("todo-mode", todo);
         const titleEl = backdrop.querySelector("#f-title"), todoEl = backdrop.querySelector("#f-todo-text");
         if(todo && !todoEl.value.trim() && titleEl.value.trim()) todoEl.value = titleEl.value.trim();
@@ -2218,7 +2225,7 @@ function openNewItemModal(initialDate){
         assignees,
         content: backdrop.querySelector("#f-note").value,
       });
-    } else if(selectedCategoryId===CAT_TODO){
+    } else if(isTodoCat(selectedCategoryId)){
       const text = backdrop.querySelector("#f-todo-text").value.replace(/\s*\n\s*/g," ").trim();
       if(!text) return;
       const due = backdrop.querySelector("#f-todo-date").value;
@@ -2410,7 +2417,7 @@ function openEditItemModal(item){
       <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
         ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}">${esc(c.name)}</button>`).join("")}
       </div>
-      <div id="edit-fields" class="todo-scope ${item.category_id===CAT_TODO?"todo-mode":""}">
+      <div id="edit-fields" class="todo-scope ${isTodoCat(item.category_id)?"todo-mode":""}">
         <div class="todo-only">
           <label class="label">할 일</label>
           <div style="position:relative;margin-bottom:12px;">
@@ -2543,7 +2550,7 @@ function openEditItemModal(item){
   }
   const editFieldsEl = backdrop.querySelector("#edit-fields");
   const applyEditTodoMode = ()=>{
-    const todo = selectedCategoryId===CAT_TODO;
+    const todo = isTodoCat(selectedCategoryId);
     editFieldsEl.classList.toggle("todo-mode", todo);
     const titleEl = backdrop.querySelector("#f-title"), todoEl = backdrop.querySelector("#f-todo-text");
     if(todo && !todoEl.value.trim() && titleEl.value.trim()) todoEl.value = titleEl.value.trim();
@@ -2603,7 +2610,7 @@ function openEditItemModal(item){
   }
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
-    if(selectedCategoryId===CAT_TODO){
+    if(isTodoCat(selectedCategoryId)){
       const text = backdrop.querySelector("#f-todo-text").value.replace(/\s*\n\s*/g," ").trim();
       if(!text) return;
       const due = backdrop.querySelector("#f-todo-date").value;
@@ -2654,6 +2661,7 @@ function openCategoryManagerModal(isRefresh){
         <h3 class="font-display text-lg font-semibold">카테고리 관리</h3>
         <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
       </div>
+      <p class="text-xs text-faint mb-3">이름에 '할일'이 들어간 카테고리는 '할 일 / 기한' 입력 양식으로 등록돼요.</p>
       <div id="cat-list" class="mb-4"></div>
       <div class="border-t" style="padding-top:16px;">
         <label class="label">새 카테고리 추가</label>
