@@ -130,6 +130,8 @@
   .pn-title{ font-weight:700; font-size:13px; color:var(--c-ink); word-break:break-all; }
   .pn-sub{ font-size:12px; color:var(--c-muted); margin-top:2px; }
   .pn-meta{ font-size:11px; color:var(--c-faint); margin-top:2px; word-break:break-all; }
+  .loc-link{ color:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+  .loc-link:hover{ color:#03a94d; }
 
   /* ---- 주간 보기 ---- */
   .wk-wrap{ border:1px solid var(--c-border); border-radius:14px; overflow:hidden; background:#fff; display:flex; flex-direction:column; --hour-h:48px; --gut:38px; height:68vh; }
@@ -1245,7 +1247,7 @@ function renderPanelCardHTML(ev){
     <div class="pn-card" style="border-left-color:${cat.color};" data-action="open-item" data-id="${ev.parentId}">
       <div class="pn-title">${shared?"🔗":"🔒"} ${esc(t)}</div>
       <div class="pn-sub">${esc(panelTimeLabel(ev))}</div>
-      ${ev.location ? `<div class="pn-meta">📍 ${esc(ev.location)}</div>` : ""}
+      ${ev.location ? `<div class="pn-meta">${locLink(ev.location)}</div>` : ""}
       ${preview ? `<div class="pn-meta">${esc(preview.length>80 ? preview.slice(0,80)+"…" : preview)}</div>` : ""}
     </div>`;
 }
@@ -1425,7 +1427,7 @@ function renderAgendaCardHTML(ev, danger){
           </div>
           ${deleteBtn}
         </div>
-        <p class="font-display text-base font-semibold mb-1" style="${titleColor}">${esc(displayTitle)}${ev.location ? ` - ${esc(ev.location)}` : ""}</p>
+        <p class="font-display text-base font-semibold mb-1" style="${titleColor}">${esc(displayTitle)}${ev.location ? ` - ${locLink(ev.location, false)}` : ""}</p>
         <p class="text-sm text-muted font-mono mb-1">${whenLabel(ev)}</p>
         ${preview ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(preview)}</p>` : ""}
         ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(esc).join(", ")}</p>` : ""}
@@ -1437,7 +1439,7 @@ function renderAgendaCardHTML(ev, danger){
         <span class="font-display text-base font-semibold shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;${titleColor}">${esc(displayTitle)}</span>
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
         <span class="text-sm font-mono shrink-0" style="${danger ? 'color:var(--c-danger);' : 'color:var(--c-muted);'}">${whenLabel(ev)}</span>
-        ${ev.location ? `<span class="text-sm text-faint shrink-0">📍 ${esc(ev.location)}</span>` : ""}
+        ${ev.location ? `<span class="text-sm text-faint shrink-0">${locLink(ev.location)}</span>` : ""}
         ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(esc).join(", ")}</span>` : ""}
         ${ev.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>` : ""}
         ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : ""}
@@ -1627,7 +1629,7 @@ function renderDetailPage(){
               <span>${item.assignees?.length ? `🔗 공유됨` : `🔒 비공개 (본인만 볼 수 있음)`}</span>
               ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
-              ${item.location ? `<span>📍 ${esc(item.location)}</span>` : ""}
+              ${item.location ? `<span>${locLink(item.location)}</span>` : ""}
               ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
               ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(a)}">${esc(a.slice(0,1))}</span>`).join(" ")} ${item.assignees.map(esc).join(", ")}</span>` : ""}
             </div>
@@ -1651,7 +1653,7 @@ function renderDetailPage(){
                       ${(log.date || log.location || log.assignees?.length) ? `
                         <p class="text-xs text-muted font-mono mb-1">
                           ${log.date ? `🕒 ${whenLabel(log)}` : ""}
-                          ${log.location ? ` &nbsp; 📍 ${esc(log.location)}` : ""}
+                          ${log.location ? ` &nbsp; ${locLink(log.location)}` : ""}
                           ${log.assignees?.length ? ` &nbsp; 👤 ${log.assignees.map(esc).join(", ")}` : ""}
                         </p>` : ""}
                       ${log.content ? `<p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>` : ""}
@@ -2601,6 +2603,36 @@ function startPolling(){
     }catch(e){ /* 일시적인 네트워크 오류는 무시하고 다음 주기에 재시도 */ }
   }, 5000);
 }
+
+/* ---------- 네이버지도 연결 ---------- */
+function naverMapWebUrl(q){ return `https://map.naver.com/p/search/${encodeURIComponent(q)}`; }
+function locLink(loc, withIcon=true){
+  return `<a class="loc-link" data-action="open-map" data-q="${esc(loc)}" href="${naverMapWebUrl(loc)}" target="_blank" rel="noopener" title="네이버지도로 열기">${withIcon?"📍 ":""}${esc(loc)}</a>`;
+}
+function isMobileDevice(){ return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
+// 휴대폰: 네이버지도 앱을 먼저 열고, 앱이 없어서 화면이 그대로면 웹 지도로 이동
+function openNaverMapApp(q){
+  const app = `nmap://search?query=${encodeURIComponent(q)}&appname=${encodeURIComponent(location.hostname||"park-golf-tracker")}`;
+  let left = false;
+  const onVis = ()=>{ if(document.hidden) left = true; };
+  document.addEventListener("visibilitychange", onVis);
+  window.location.href = app;
+  setTimeout(()=>{
+    document.removeEventListener("visibilitychange", onVis);
+    if(!left) window.location.href = naverMapWebUrl(q);
+  }, 1500);
+}
+// 카드·행 전체가 눌리는 구조라서, 주소를 눌렀을 때 건 상세가 같이 열리지 않도록 가장 먼저(capture) 가로챔
+document.addEventListener("click", (e)=>{
+  const a = e.target && e.target.closest ? e.target.closest('[data-action="open-map"]') : null;
+  if(!a) return;
+  e.stopPropagation();
+  if(isMobileDevice()){
+    e.preventDefault();
+    openNaverMapApp(a.dataset.q);
+  }
+  // PC는 링크 기본 동작(새 탭)에 맡김
+}, true);
 
 function navMove(dir){
   if(calView==="month"){
