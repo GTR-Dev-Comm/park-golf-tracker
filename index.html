@@ -1473,7 +1473,12 @@ function ownerColor(name){
   for(const ch of String(name)) h = (h*31 + ch.charCodeAt(0)) >>> 0;
   return OWNER_COLORS[h % OWNER_COLORS.length];
 }
-function ownerInitial(name){ return String(name||"").trim().slice(0,1).toUpperCase(); }
+// 로그인 이름(아이디)과 다르게 달력에 보여줄 글자를 따로 정하고 싶은 사람은 여기에 적음
+const OWNER_SHORT = { "mcjjang": "장" };
+function ownerInitial(name){
+  const n = String(name||"").trim();
+  return OWNER_SHORT[n] || n.slice(0,1).toUpperCase();
+}
 // 달력 칩 앞에 붙는 작은 동그라미 (이름 첫 글자, 사람마다 다른 색)
 function ownerBadges(owners){
   if(!owners || !owners.length) return "";
