@@ -174,6 +174,9 @@
   .log-edit-btn{ font-size:11px; color:var(--c-muted); text-decoration:underline; padding:0 2px; cursor:pointer; }
   .log-date-link{ font:inherit; color:inherit; text-decoration:underline; cursor:pointer; padding:0; text-align:left; }
   .log-date-link:hover, .log-edit-btn:hover{ color:var(--c-ink); }
+  .own{ display:inline-flex; align-items:center; justify-content:center; min-width:13px; height:13px; padding:0 3px; margin-right:3px; border-radius:999px; background:#fff; font-size:9px; font-weight:800; line-height:1; vertical-align:middle; box-shadow:0 0 0 1px rgba(0,0,0,.08); }
+  .owner-chip .own{ margin-right:6px; box-shadow:0 0 0 1px rgba(0,0,0,.12); }
+  .own-pill{ display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:999px; font-family:'IBM Plex Mono',monospace; }
   .due-wrap{ display:flex; align-items:center; gap:8px; }
   .due-field{ position:relative; flex:1; display:flex; align-items:center; min-height:42px; padding:10px 12px; border:1px solid var(--c-border); border-radius:10px; background:#fff; font-size:14px; color:var(--c-faint); }
   .due-field.set{ color:var(--c-ink); font-weight:600; }
@@ -658,6 +661,7 @@ async function createItem(payload){
       created_at: now,
       updated_at: now,
     };
+    if(payload.owners && payload.owners.length) row.owners = payload.owners;
     if(payload.repeatRule) row.repeat_rule = payload.repeatRule;     // 반복 칸이 DB에 없으면 반복을 쓸 때만 오류가 나도록, 값이 있을 때만 보냄
     const created = await apiInsert("items", row);
     items = [created, ...items];
@@ -822,6 +826,10 @@ async function updateItem(itemId, patch){
       all_day: patch.allDay, time: patch.allDay ? "" : patch.time, end_time: patch.allDay ? "" : (patch.endTime || ""), location: patch.location || "",
       reminder_time: "", reminders: patch.reminders || [], assignees: patch.assignees || [], updated_at: now,
     };
+    if(patch.owners!==undefined){
+      const prevO = items.find(i=>i.id===itemId);
+      if(patch.owners.length || (prevO && prevO.owners && prevO.owners.length)) row.owners = patch.owners;
+    }
     if(patch.repeatRule!==undefined){
       const prev = items.find(i=>i.id===itemId);
       if(patch.repeatRule || (prev && prev.repeat_rule)) row.repeat_rule = patch.repeatRule || null;
@@ -1015,6 +1023,7 @@ function itemToEvent(item){
     date: item.date, all_day: item.all_day, time: item.time, location: item.location||"",
     assignees: item.assignees||[], status: item.status, isSub:false, item,
     end_date: item.end_date||null, end_time: item.end_time||"",
+    owners: item.owners||[],
   };
 }
 
@@ -1083,6 +1092,7 @@ function collectCalendarEvents(scopedItems, range){
     });
   });
   events.forEach(ev=>{ if(!ev.isSub && ev.done===undefined) ev.done = isDoneTodo(ev.item); });
+  events.forEach(ev=>{ ev.owners = (ev.item && ev.item.owners) || []; });
   return events;
 }
 
@@ -1456,6 +1466,56 @@ function setupTodoFields(root, opt){
   return { getValues, refresh };
 }
 
+/* ---------- 담당자 (누구의 일정/업무인가) ---------- */
+const OWNER_COLORS = ["#E11D48","#0284C7","#16A34A","#9333EA","#EA580C","#0D9488","#CA8A04","#DB2777"];
+function ownerColor(name){
+  let h = 0;
+  for(const ch of String(name)) h = (h*31 + ch.charCodeAt(0)) >>> 0;
+  return OWNER_COLORS[h % OWNER_COLORS.length];
+}
+function ownerInitial(name){ return String(name||"").trim().slice(0,1).toUpperCase(); }
+// 달력 칩 앞에 붙는 작은 동그라미 (이름 첫 글자, 사람마다 다른 색)
+function ownerBadges(owners){
+  if(!owners || !owners.length) return "";
+  return owners.map(n=>`<span class="own" style="color:${ownerColor(n)}" title="담당: ${esc(n)}">${esc(ownerInitial(n))}</span>`).join("");
+}
+// 카드에 붙는 이름표
+function ownerPills(owners){
+  if(!owners || !owners.length) return "";
+  return owners.map(n=>`<span class="own-pill" style="background:${ownerColor(n)}1A;color:${ownerColor(n)};">🙋 ${esc(n)}</span>`).join("");
+}
+// 담당자로 고를 수 있는 사람들 (승인된 회원 + 나)
+function ownerCandidates(){
+  const names = [];
+  if(currentUser) names.push(currentUser);
+  (approvedUsers||[]).forEach(u=>{ if(u && u.name && !names.includes(u.name)) names.push(u.name); });
+  return names;
+}
+// 담당자 고르기 칸. '회사 전체'(아무도 안 고름) 또는 사람(여러 명 가능)
+function setupOwnerPicker(container, initial, onAdd){
+  let owners = [...(initial||[])];
+  function render(){
+    const names = ownerCandidates();
+    owners.forEach(n=>{ if(!names.includes(n)) names.push(n); });      // 지금은 목록에 없는 사람이 담당자로 저장돼 있어도 보이게
+    container.innerHTML =
+      `<button type="button" class="chip owner-chip ${owners.length===0?"active":""}" data-owner="">🏢 회사 전체</button>` +
+      names.map(n=>`<button type="button" class="chip owner-chip ${owners.includes(n)?"active":""}" data-owner="${esc(n)}"><span class="own" style="color:${ownerColor(n)}">${esc(ownerInitial(n))}</span>${esc(n)}${n===currentUser?" (나)":""}</button>`).join("");
+    container.querySelectorAll(".owner-chip").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const n = btn.dataset.owner;
+        if(!n){ owners = []; }
+        else if(owners.includes(n)){ owners = owners.filter(x=>x!==n); }
+        else { owners.push(n); if(onAdd) onAdd(n); }
+        render();
+      });
+    });
+  }
+  render();
+  return { get: ()=> [...owners] };
+}
+// 담당자로 고른 사람은 그 일정이 보여야 하니까 '공유할 사람'에도 자동으로 넣어줌 (나 자신은 제외)
+const ownerShareHint = `<p class="text-11 text-faint mb-3">아무도 안 고르면 '회사 전체' 일정이에요. 담당자로 고른 사람은 자동으로 공유돼요.</p>`;
+
 /* ==================== 달력 공통 도우미 ==================== */
 function calConsts(){
   return window.innerWidth>=768
@@ -1664,11 +1724,11 @@ function buildRangeSegments(scopedItems, gridFirst, maxLanes){
   const ranges = [];
   scopedItems.forEach(item=>{
     if(item.date && item.end_date && item.end_date>item.date && !item.repeat_rule){
-      ranges.push({ start:item.date, end:item.end_date, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"", parentId:item.id, isSub:false, logId:"", done:isDoneTodo(item) });
+      ranges.push({ start:item.date, end:item.end_date, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"", parentId:item.id, isSub:false, logId:"", done:isDoneTodo(item), owners:item.owners||[] });
     }
     (item.logs||[]).forEach(log=>{
       if(log.date && log.end_date && log.end_date>log.date){
-        ranges.push({ start:log.date, end:log.end_date, categoryId:item.category_id, title:item.title, subtitle:log.subtitle||"", parentId:item.id, isSub:true, logId:log.id });
+        ranges.push({ start:log.date, end:log.end_date, categoryId:item.category_id, title:item.title, subtitle:log.subtitle||"", parentId:item.id, isSub:true, logId:log.id, owners:item.owners||[] });
       }
     });
   });
@@ -1711,6 +1771,7 @@ function buildRangeSegments(scopedItems, gridFirst, maxLanes){
         hidden: lane >= maxLanes,
         categoryId: r.categoryId,
         done: !!r.done,
+        owners: r.owners || [],
         fullLabel: r.subtitle ? `${r.title} · ${r.subtitle}` : r.title,
         parentId: r.parentId, isSub: r.isSub, logId: r.logId, trueStart: r.trueStart,
         hasStart: segStartIdx===r.clipStartIdx && r.isTrueStart,
@@ -1779,7 +1840,7 @@ function renderCalendarHTML(){
       // 모바일은 글자 자리를 아끼려고 '공유됨(🔗)' 표시는 생략하고 비공개(🔒)만 표시
       const icon = c.desktop ? (shared ? "🔗 " : "🔒 ") : (shared ? "" : "🔒");
       const t = e.subtitle ? `${e.title} · ${e.subtitle}` : e.title;
-      return `<div class="cal-chip${e.done?" done":""}" draggable="${e.repeat?"false":"true"}" data-occ="${e.occDate||""}" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${icon}${(c.desktop && e.repeat) ? "↻ " : ""}${esc(t)}</div>`;
+      return `<div class="cal-chip${e.done?" done":""}" draggable="${e.repeat?"false":"true"}" data-occ="${e.occDate||""}" data-from-date="${e.date}" data-is-sub="${e.isSub?1:0}" data-log-id="${e.log?e.log.id:""}" style="background:${catById(e.categoryId).color}" data-action="open-pop" data-id="${e.parentId}" title="${esc(t)}">${ownerBadges(e.owners)}${icon}${(c.desktop && e.repeat) ? "↻ " : ""}${esc(t)}</div>`;
     }).join("");
     const moreHtml = moreN>0 ? `<div class="cal-chip-more">+${moreN}개</div>` : "";
     const laneSpacer = lanes ? `<div style="height:calc(${lanes} * var(--line-h));"></div>` : "";
@@ -1797,7 +1858,7 @@ function renderCalendarHTML(){
     const bm = c.desktop ? 3 : 1;
     const ml = seg.hasStart ? bm : 0, mr = seg.hasEnd ? bm : 0;
     return `<div class="cal-range-bar${seg.done?" done":""}" draggable="true" data-from-date="${seg.trueStart}" data-is-sub="${seg.isSub?1:0}" data-log-id="${seg.logId}" data-action="open-pop" data-id="${seg.parentId}"
-      style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin:calc(var(--pad-top) + var(--daynum-h) + ${seg.lane} * var(--line-h)) ${mr}px 0 ${ml}px; background:${color}; border-radius:${lr} ${rr} ${rr} ${lr};" title="${esc(seg.fullLabel)}">${esc(seg.fullLabel)}</div>`;
+      style="grid-column:${seg.colStart+1} / ${seg.colEnd+2}; grid-row:${seg.rowIdx+1}; margin:calc(var(--pad-top) + var(--daynum-h) + ${seg.lane} * var(--line-h)) ${mr}px 0 ${ml}px; background:${color}; border-radius:${lr} ${rr} ${rr} ${lr};" title="${esc(seg.fullLabel)}">${ownerBadges(seg.owners)}${esc(seg.fullLabel)}</div>`;
   }).join("");
 
   return `
@@ -1827,7 +1888,7 @@ function renderPanelCardHTML(ev){
   const shared = ev.assignees && ev.assignees.length>0;
   return `
     <div class="pn-card${ev.done?" done":""}" style="border-left-color:${cat.color};" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" data-occ="${ev.occDate||""}">
-      <div class="pn-title">${shared?"🔗":"🔒"} ${ev.repeat?"↻ ":""}${esc(t)}</div>
+      <div class="pn-title">${ownerBadges(ev.owners)}${shared?"🔗":"🔒"} ${ev.repeat?"↻ ":""}${esc(t)}</div>
       <div class="pn-sub">${esc(panelTimeLabel(ev))}</div>
       ${ev.location ? `<div class="pn-meta">${locLink(ev.location)}</div>` : ""}
       ${preview ? `<div class="pn-meta">${esc(preview.length>80 ? preview.slice(0,80)+"…" : preview)}</div>` : ""}
@@ -1860,6 +1921,7 @@ function gatherEntries(scopedItems, range){
       parentId:item.id, categoryId:item.category_id, title:item.title, subtitle:subtitle||"",
       start:src.date, end, timed: src.all_day===false && !!src.time, time:src.time||"", endTime:src.end_time||"",
       assignees: src.assignees || item.assignees || [], isSub, item, log,
+      owners: item.owners || [],
       done: !isSub && isDoneTodo(item),
     });
   };
@@ -1871,7 +1933,7 @@ function gatherEntries(scopedItems, range){
         out.push({
           parentId:item.id, categoryId:item.category_id, title:item.title, subtitle:item.subtitle||"",
           start:occ, end:occ, timed: item.all_day===false && !!item.time, time:item.time||"", endTime:item.end_time||"",
-          assignees: item.assignees||[], isSub:false, item, log:null, occ, done: doneList.includes(occ),
+          assignees: item.assignees||[], isSub:false, item, log:null, occ, done: doneList.includes(occ), owners: item.owners||[],
         });
       });
     } else push(item, item, false, item.subtitle, null);
@@ -1958,7 +2020,7 @@ function renderWeekHTML(scoped){
     const lr = a.hasStart ? "4px" : "0", rr = a.hasEnd ? "4px" : "0";
     const ml = a.hasStart ? 3 : 0, mr = a.hasEnd ? 3 : 0;
     const t = `${iconOf(a)} ${titleOf(a)}`;
-    return `<div class="wk-bar${a.done?" done":""}" data-action="open-pop" data-id="${a.parentId}" data-log-id="${a.log?a.log.id:""}" data-occ="${a.occ||""}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${esc(t)}</div>`;
+    return `<div class="wk-bar${a.done?" done":""}" data-action="open-pop" data-id="${a.parentId}" data-log-id="${a.log?a.log.id:""}" data-occ="${a.occ||""}" style="grid-column:${a.colStart+1} / ${a.colEnd+2};grid-row:${a.lane+1};background:${color};border-radius:${lr} ${rr} ${rr} ${lr};margin:1px ${mr}px 1px ${ml}px;" title="${esc(titleOf(a))}">${ownerBadges(a.owners)}${esc(t)}</div>`;
   }).join("");
 
   const hlabels = Array.from({length:23}, (_,k)=>{
@@ -1977,7 +2039,7 @@ function renderWeekHTML(scoped){
       const h = Math.max((ev.endMin-ev.startMin)/60*hourPx, 22);
       const tm = `${fmtTime12(ev.time)}${ev.endTime ? ` ~ ${fmtTime12(ev.endTime)}` : ""}`;
       return `<div class="wk-ev${ev.done?" done":""}" data-action="open-pop" data-id="${ev.parentId}" data-log-id="${ev.log?ev.log.id:""}" data-occ="${ev.occ||""}" style="top:${top}px;height:${h}px;left:calc(${ev.col} / ${ev.cols} * 100% + 1px);width:calc(100% / ${ev.cols} - 2px);background:${color};" title="${esc(titleOf(ev))} ${tm}">
-        <div class="t">${iconOf(ev)} ${esc(titleOf(ev))}</div><div class="s">${tm}</div></div>`;
+        <div class="t">${ownerBadges(ev.owners)}${iconOf(ev)} ${esc(titleOf(ev))}</div><div class="s">${tm}</div></div>`;
     }).join("");
     const nowLine = isos[i]===todayISO ? `<div class="wk-now" style="top:${nowMin/60*hourPx}px;"></div>` : "";
     return `<div class="wk-col ${isos[i]===todayISO?"today":""}" data-date="${isos[i]}">${blocks}${nowLine}</div>`;
@@ -2017,7 +2079,7 @@ function renderAgendaCardHTML(ev, danger){
           <div class="flex items-center gap-2 flex-wrap">
             ${todoCheck}
             <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-            ${sharedBadge}
+            ${sharedBadge}${ownerPills(ev.owners)}
             ${danger ? `<span class="text-11 font-mono text-danger">⏰ 미완료</span>` : ""}
             ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
             ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
@@ -2032,7 +2094,7 @@ function renderAgendaCardHTML(ev, danger){
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         ${todoCheck}
         <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-        ${sharedBadge}
+        ${sharedBadge}${ownerPills(ev.owners)}
         ${danger ? `<span class="text-11 font-mono text-danger shrink-0">⏰</span>` : ""}
         <span class="font-display text-base font-semibold shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;${titleColor}">${esc(displayTitle)}</span>
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
@@ -2254,6 +2316,7 @@ function renderDetailPage(){
             </div>
             <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
               <span>${item.assignees?.length ? `🔗 공유됨` : `🔒 비공개 (본인만 볼 수 있음)`}</span>
+              ${(item.owners && item.owners.length) ? `<span>🙋 담당: ${item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(n)}</b>`).join(", ")}</span>` : ""}
               ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
               ${item.repeat_rule ? `<span>🔁 ${esc(repeatLabelFull(item))}</span>` : ""}
@@ -2428,6 +2491,7 @@ function openNewItemModal(initialDate){
   let assignees = [];
   let reminderEditor = null;
   let todoUI = null;
+  let ownerUI = null;
 
   function renderCaseSearch(){
     const wrap = backdrop.querySelector("#case-search-wrap");
@@ -2459,6 +2523,7 @@ function openNewItemModal(initialDate){
 
   function renderFormFields(){
     assignees = [];
+    ownerUI = null;
     const fieldsEl = backdrop.querySelector("#form-fields");
     fieldsEl.classList.add("todo-scope");
     fieldsEl.classList.remove("todo-mode");
@@ -2508,6 +2573,9 @@ function openNewItemModal(initialDate){
         <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
           ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}" style="color:${c.color}">${esc(c.name)}</button>`).join("")}
         </div>
+        <label class="label">담당자 <span class="text-11 text-faint">(누구의 일정·업무인가요?)</span></label>
+        <div class="flex flex-wrap gap-2 mb-1" id="owner-picker"></div>
+        ${ownerShareHint}
         ${todoFieldsHTML("", 0)}
         <div class="gen-only">
         <label class="label">제목</label>
@@ -2582,6 +2650,9 @@ function openNewItemModal(initialDate){
       applyTodoMode();
       // 날짜 칸(달력)에서 '이 날짜에 등록'으로 열었으면 그날 하루짜리로, 아니면 '기한 없음'으로 시작
       todoUI = setupTodoFields(fieldsEl.querySelector(".todo-only"), { initialStart: initialDate||"", initialDue: initialDate||"" });
+      ownerUI = setupOwnerPicker(backdrop.querySelector("#owner-picker"), [], (name)=>{
+        if(name!==currentUser && !assignees.includes(name)){ assignees.push(name); renderAssigneeChips(); }
+      });
     }
 
     backdrop.querySelector("#f-allday").addEventListener("change", (e)=>{
@@ -2668,6 +2739,7 @@ function openNewItemModal(initialDate){
         assignees,
         firstNote: "",
         repeatRule: tv.rule,
+        owners: ownerUI ? ownerUI.get() : [],
       });
     } else {
       const title = backdrop.querySelector("#f-title").value.trim();
@@ -2685,6 +2757,7 @@ function openNewItemModal(initialDate){
         reminders: reminderEditor.get(),
         assignees,
         firstNote: backdrop.querySelector("#f-note").value,
+        owners: ownerUI ? ownerUI.get() : [],
       });
     }
   });
@@ -2842,6 +2915,9 @@ function openEditItemModal(item){
       <div class="flex flex-wrap gap-2 mb-3" id="cat-picker">
         ${categories.map(c=>`<button type="button" class="chip cat-option" data-cat="${c.id}">${esc(c.name)}</button>`).join("")}
       </div>
+      <label class="label">담당자 <span class="text-11 text-faint">(누구의 일정·업무인가요?)</span></label>
+      <div class="flex flex-wrap gap-2 mb-1" id="owner-picker"></div>
+      ${ownerShareHint}
       <div id="edit-fields" class="todo-scope ${isTodoCat(item.category_id)?"todo-mode":""}">
         ${todoFieldsHTML(esc(item.title||""), (item.title||"").length)}
         <div class="gen-only">
@@ -2941,7 +3017,7 @@ function openEditItemModal(item){
   let editSnapshot = null;
   const readEditFields = ()=>{
     const v = sel => { const e = backdrop.querySelector(sel); return e ? e.value : ""; };
-    return JSON.stringify([ selectedCategoryId, v("#f-title"), v("#f-subtitle"), v("#f-date"), v("#f-end-date"), v("#f-location"), v("#f-todo-text"), v("#f-todo-date"), v("#f-todo-start"), v("#f-todo-time"), assignees.join("|"), (typeof reminderEditor!=="undefined" && reminderEditor) ? reminderEditor.get() : null, (typeof todoUI!=="undefined" && todoUI) ? todoUI.getValues() : null ]);
+    return JSON.stringify([ selectedCategoryId, v("#f-title"), v("#f-subtitle"), v("#f-date"), v("#f-end-date"), v("#f-location"), v("#f-todo-text"), v("#f-todo-date"), v("#f-todo-start"), v("#f-todo-time"), assignees.join("|"), (typeof ownerUI!=="undefined" && ownerUI) ? ownerUI.get().join("|") : "", (typeof reminderEditor!=="undefined" && reminderEditor) ? reminderEditor.get() : null, (typeof todoUI!=="undefined" && todoUI) ? todoUI.getValues() : null ]);
   };
   const editIsDirty = ()=> editSnapshot!==null && readEditFields()!==editSnapshot;
   renderEditLogTimeline();
@@ -2993,6 +3069,9 @@ function openEditItemModal(item){
     initialDue: item.end_date || (item.repeat_rule ? "" : (item.date || "")),
     initialTime: (item.all_day===false && item.time) ? item.time : "",
     initialRule: item.repeat_rule || null,
+  });
+  const ownerUI = setupOwnerPicker(backdrop.querySelector("#owner-picker"), item.owners || [], (name)=>{
+    if(name!==currentUser && !assignees.includes(name)){ assignees.push(name); renderAssigneeChips(); }
   });
   editSnapshot = readEditFields();
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
@@ -3047,6 +3126,7 @@ function openEditItemModal(item){
         reminders: reminderEditor.get(),
         assignees,
         repeatRule: repRule,
+        owners: ownerUI.get(),
       });
       returnToCalendar();
       return;
@@ -3065,6 +3145,7 @@ function openEditItemModal(item){
       location: backdrop.querySelector("#f-location").value,
       reminders: reminderEditor.get(),
       assignees,
+      owners: ownerUI.get(),
     });
     returnToCalendar();
   });
@@ -3568,6 +3649,7 @@ function popoverHTML(item, logId, occ){
     ${row("🕒", esc(src.date ? popWhen(src) : "날짜 없음"))}
     ${(!log && item.repeat_rule) ? row("🔁", esc(repeatLabelFull(item)) + (isDone ? " · <b>이 날짜 완료</b>" : "")) : ""}
     ${src.location ? row("📍", locLink(src.location, false)) : ""}
+    ${(item.owners && item.owners.length) ? row("🙋", "담당: " + item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(n)}</b>`).join(", ")) : ""}
     ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(esc).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
     ${rem ? row("🔔", esc(rem)) : ""}
     ${row("🏷", `${esc(cat.name)} · ${esc(item.status||"진행중")}`)}
