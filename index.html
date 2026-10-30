@@ -318,6 +318,16 @@ const SUPABASE_URL = "https://hypqqmdieswabqiensed.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cHFxbWRpZXN3YWJxaWVuc2VkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTUzNTYsImV4cCI6MjA5ODgzMTM1Nn0.DPLUAn4pLGEVE035v4pFg9rLo9d9sFYf4MvVEm5vhuA";
 const VAPID_PUBLIC_KEY = "BAJ51vJxOp5Z8ZZBqN7f-Uhz2e2TXPVUXsX-h9Cc3M_SpLvDUyjJEh2d-n1XR2QEUH311UcMC5Vd3XWPFdvM6a0";
 const MASTER_NAME = "mcjjang";
+
+// 화면에 보여줄 이름. 로그인 아이디(mcjjang)와 저장되는 값(작성자·공유·담당자)은 그대로 두고, 보이는 글자만 바꿈
+const DISPLAY_NAMES = { "mcjjang": "장관섭" };
+const dn = (name)=> DISPLAY_NAMES[name] || name;
+// 사람이 입력한 이름을 저장용 이름으로 되돌림 (예: '장관섭' → 'mcjjang')
+function realName(input){
+  const t = String(input||"").trim();
+  for(const k in DISPLAY_NAMES){ if(DISPLAY_NAMES[k]===t) return k; }
+  return t;
+}
 let approvedUsers = []; // 로그인 후 Supabase에서 불러오는, 승인된 다른 회원 이름 목록
 
 // 담당자 입력창이 비어있는 상태로 포커스되면, 승인된 다른 회원 이름을
@@ -327,7 +337,7 @@ function wireAssigneeSuggestions(inputEl, dropdownEl, getAssignees, onAdd){
     if(inputEl.value.trim()===""){
       const suggestions = approvedUsers.map(u=>u.name).filter(n=>n!==currentUser && !getAssignees().includes(n));
       if(suggestions.length>0){
-        dropdownEl.innerHTML = suggestions.map(n=>`<button type="button" data-name="${esc(n)}">${esc(n)}</button>`).join("");
+        dropdownEl.innerHTML = suggestions.map(n=>`<button type="button" data-name="${esc(n)}">${esc(dn(n))}</button>`).join("");
         dropdownEl.querySelectorAll("button").forEach(b=>{
           b.addEventListener("mousedown", (e)=>{
             e.preventDefault();
@@ -537,6 +547,7 @@ function createReminderEditor(container, initial){
       btn.addEventListener("click", ()=>{ sync(); reminders.splice(Number(btn.dataset.idx),1); renderRows(); });
     });
   }
+  container.insertAdjacentHTML("beforeend", `<p class="text-11 text-faint" style="margin-top:6px;">알림은 정해진 시각에 푸시로 와요 (받는 사람: 알림을 설정한 사람 + 공유된 사람).</p>`);
   container.querySelector(".rem-add").addEventListener("click", ()=>{
     sync();
     reminders.push({ id: uid("rem"), daysBefore:0, time:"09:00" });
@@ -1473,21 +1484,16 @@ function ownerColor(name){
   for(const ch of String(name)) h = (h*31 + ch.charCodeAt(0)) >>> 0;
   return OWNER_COLORS[h % OWNER_COLORS.length];
 }
-// 로그인 이름(아이디)과 다르게 달력에 보여줄 글자를 따로 정하고 싶은 사람은 여기에 적음
-const OWNER_SHORT = { "mcjjang": "장" };
-function ownerInitial(name){
-  const n = String(name||"").trim();
-  return OWNER_SHORT[n] || n.slice(0,1).toUpperCase();
-}
+function ownerInitial(name){ return dn(String(name||"").trim()).slice(0,1).toUpperCase(); }
 // 달력 칩 앞에 붙는 작은 동그라미 (이름 첫 글자, 사람마다 다른 색)
 function ownerBadges(owners){
   if(!owners || !owners.length) return "";
-  return owners.map(n=>`<span class="own" style="color:${ownerColor(n)}" title="담당: ${esc(n)}">${esc(ownerInitial(n))}</span>`).join("");
+  return owners.map(n=>`<span class="own" style="color:${ownerColor(n)}" title="담당: ${esc(dn(n))}">${esc(ownerInitial(n))}</span>`).join("");
 }
 // 카드에 붙는 이름표
 function ownerPills(owners){
   if(!owners || !owners.length) return "";
-  return owners.map(n=>`<span class="own-pill" style="background:${ownerColor(n)}1A;color:${ownerColor(n)};">🙋 ${esc(n)}</span>`).join("");
+  return owners.map(n=>`<span class="own-pill" style="background:${ownerColor(n)}1A;color:${ownerColor(n)};">🙋 ${esc(dn(n))}</span>`).join("");
 }
 // 담당자로 고를 수 있는 사람들 (승인된 회원 + 나)
 function ownerCandidates(){
@@ -1504,7 +1510,7 @@ function setupOwnerPicker(container, initial, onAdd){
     owners.forEach(n=>{ if(!names.includes(n)) names.push(n); });      // 지금은 목록에 없는 사람이 담당자로 저장돼 있어도 보이게
     container.innerHTML =
       `<button type="button" class="chip owner-chip ${owners.length===0?"active":""}" data-owner="">🏢 회사 전체</button>` +
-      names.map(n=>`<button type="button" class="chip owner-chip ${owners.includes(n)?"active":""}" data-owner="${esc(n)}"><span class="own" style="color:${ownerColor(n)}">${esc(ownerInitial(n))}</span>${esc(n)}${n===currentUser?" (나)":""}</button>`).join("");
+      names.map(n=>`<button type="button" class="chip owner-chip ${owners.includes(n)?"active":""}" data-owner="${esc(n)}"><span class="own" style="color:${ownerColor(n)}">${esc(ownerInitial(n))}</span>${esc(dn(n))}${n===currentUser?" (나)":""}</button>`).join("");
     container.querySelectorAll(".owner-chip").forEach(btn=>{
       btn.addEventListener("click", ()=>{
         const n = btn.dataset.owner;
@@ -2094,7 +2100,7 @@ function renderAgendaCardHTML(ev, danger){
         <p class="font-display text-base font-semibold mb-1" style="${titleColor}">${esc(displayTitle)}${ev.location ? ` - ${locLink(ev.location, false)}` : ""}</p>
         <p class="text-sm text-muted font-mono mb-1">${whenLabel(ev)}</p>
         ${preview ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(preview)}</p>` : ""}
-        ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(esc).join(", ")}</p>` : ""}
+        ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(a=>esc(dn(a))).join(", ")}</p>` : ""}
       </div>
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         ${todoCheck}
@@ -2105,7 +2111,7 @@ function renderAgendaCardHTML(ev, danger){
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
         <span class="text-sm font-mono shrink-0" style="${danger ? 'color:var(--c-danger);' : 'color:var(--c-muted);'}">${whenLabel(ev)}</span>
         ${ev.location ? `<span class="text-sm text-faint shrink-0">${locLink(ev.location)}</span>` : ""}
-        ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(esc).join(", ")}</span>` : ""}
+        ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(a=>esc(dn(a))).join(", ")}</span>` : ""}
         ${ev.status==="완료" ? `<span class="text-11 font-mono text-done shrink-0">✓</span>` : ""}
         ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint shrink-0">보류</span>` : ""}
         ${deleteBtn}
@@ -2321,13 +2327,13 @@ function renderDetailPage(){
             </div>
             <div class="flex flex-col gap-1_5 text-xs text-muted font-mono">
               <span>${item.assignees?.length ? `🔗 공유됨` : `🔒 비공개 (본인만 볼 수 있음)`}</span>
-              ${(item.owners && item.owners.length) ? `<span>🙋 담당: ${item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(n)}</b>`).join(", ")}</span>` : ""}
-              ${item.created_by ? `<span>✍️ ${esc(item.created_by)}</span>` : ""}
+              ${(item.owners && item.owners.length) ? `<span>🙋 담당: ${item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(dn(n))}</b>`).join(", ")}</span>` : ""}
+              ${item.created_by ? `<span>✍️ ${esc(dn(item.created_by))}</span>` : ""}
               ${item.date ? `<span>🕒 ${whenLabel(item)}</span>` : ""}
               ${item.repeat_rule ? `<span>🔁 ${esc(repeatLabelFull(item))}</span>` : ""}
               ${item.location ? `<span>${locLink(item.location)}</span>` : ""}
               ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
-              ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(a)}">${esc(a.slice(0,1))}</span>`).join(" ")} ${item.assignees.map(esc).join(", ")}</span>` : ""}
+              ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(dn(a))}">${esc(dn(a).slice(0,1))}</span>`).join(" ")} ${item.assignees.map(a=>esc(dn(a))).join(", ")}</span>` : ""}
             </div>
             ${item.category_id!==CAT_PROGRESS ? `<button class="btn-soft mt-3" data-action="convert-progress">진행사항으로 전환</button>` : ""}
             ${linkedChildren.length>0 ? `
@@ -2345,7 +2351,7 @@ function renderDetailPage(){
                     <div class="relative">
                       <div style="position:absolute;left:-16px;top:6px;width:10px;height:10px;border-radius:999px;background:var(--c-gold);border:2px solid #fff;"></div>
                       <div class="text-11 font-mono text-faint mb-1" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                        <span>${fmtDateTime(log.created_at)} · ${esc(log.author)}</span>
+                        <span>${fmtDateTime(log.created_at)} · ${esc(dn(log.author))}</span>
                         <button type="button" class="log-edit-btn" data-action="edit-log" data-item="${item.id}" data-log="${log.id}">✎ 수정</button>
                       </div>
                       ${log.subtitle ? `<p class="font-display text-sm font-semibold text-ink mb-1">${esc(log.subtitle)}</p>` : ""}
@@ -2353,7 +2359,7 @@ function renderDetailPage(){
                         <p class="text-xs text-muted font-mono mb-1">
                           ${log.date ? `<button type="button" class="log-date-link" data-action="edit-log" data-item="${item.id}" data-log="${log.id}" title="눌러서 이 기록 수정">🕒 ${whenLabel(log)}</button>` : ""}
                           ${log.location ? ` &nbsp; ${locLink(log.location)}` : ""}
-                          ${log.assignees?.length ? ` &nbsp; 👤 ${log.assignees.map(esc).join(", ")}` : ""}
+                          ${log.assignees?.length ? ` &nbsp; 👤 ${log.assignees.map(a=>esc(dn(a))).join(", ")}` : ""}
                         </p>` : ""}
                       ${log.content ? `<p class="text-sm text-ink" style="line-height:1.5;white-space:pre-wrap;">${esc(log.content)}</p>` : ""}
                     </div>
@@ -2682,7 +2688,7 @@ function openNewItemModal(initialDate){
 
     function renderAssigneeChips(){
       backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
-        `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+        `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(dn(a))} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
       ).join("");
       backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
         b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
@@ -2691,7 +2697,7 @@ function openNewItemModal(initialDate){
     renderAssigneeChips();
     backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
       const inp = backdrop.querySelector("#f-assignee-input");
-      const name = inp.value.trim();
+      const name = realName(inp.value);
       if(name && !assignees.includes(name)) assignees.push(name);
       inp.value = "";
       renderAssigneeChips();
@@ -2785,7 +2791,7 @@ function openLogEditModal(itemId, logId, opts){
         <h3 class="font-display text-lg font-semibold">기록 수정</h3>
         <button data-action="close-modal" style="font-size:22px;line-height:1;padding:6px 10px;">✕</button>
       </div>
-      <p class="text-xs text-faint mb-4">${esc(item.title)} · ${fmtDateTime(log.created_at)} · ${esc(log.author||"")}</p>
+      <p class="text-xs text-faint mb-4">${esc(item.title)} · ${fmtDateTime(log.created_at)} · ${esc(dn(log.author||""))}</p>
       <label class="label">소제목</label>
       <input id="f-subtitle" class="input mb-3" value="${esc(log.subtitle||"")}" placeholder="예: 2차 견적 발송" />
       <div class="flex items-center justify-between mb-2">
@@ -2834,7 +2840,7 @@ function openLogEditModal(itemId, logId, opts){
 
   function renderAssigneeChips(){
     backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
-      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(dn(a))} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
     ).join("");
     backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
       b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
@@ -2844,7 +2850,7 @@ function openLogEditModal(itemId, logId, opts){
   const reminderEditor = createReminderEditor(backdrop.querySelector("#reminder-editor"), getReminders(log));
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
-    const name = inp.value.trim();
+    const name = realName(inp.value);
     if(name && !assignees.includes(name)) assignees.push(name);
     inp.value = "";
     renderAssigneeChips();
@@ -3000,7 +3006,7 @@ function openEditItemModal(item){
             <div class="relative">
               <div style="position:absolute;left:-16px;top:6px;width:10px;height:10px;border-radius:999px;background:var(--c-gold);border:2px solid #fff;"></div>
               <div class="text-11 font-mono text-faint mb-1" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-                <span>${fmtDateTime(log.created_at)} · ${esc(log.author)}</span>
+                <span>${fmtDateTime(log.created_at)} · ${esc(dn(log.author))}</span>
                 <button type="button" class="log-edit-btn edit-log-link" data-log="${log.id}">✎ 수정</button>
               </div>
               ${log.subtitle ? `<p class="font-display text-sm font-semibold text-ink mb-1">${esc(log.subtitle)}</p>` : ""}
@@ -3061,7 +3067,7 @@ function openEditItemModal(item){
 
   function renderAssigneeChips(){
     backdrop.querySelector("#assignee-chips").innerHTML = assignees.map(a=>
-      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(a)} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
+      `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;">${esc(dn(a))} <button type="button" data-name="${esc(a)}" class="remove-assignee">✕</button></span>`
     ).join("");
     backdrop.querySelectorAll(".remove-assignee").forEach(b=>{
       b.addEventListener("click", ()=>{ assignees = assignees.filter(x=>x!==b.dataset.name); renderAssigneeChips(); });
@@ -3081,7 +3087,7 @@ function openEditItemModal(item){
   editSnapshot = readEditFields();
   backdrop.querySelector("#f-add-assignee").addEventListener("click", ()=>{
     const inp = backdrop.querySelector("#f-assignee-input");
-    const name = inp.value.trim();
+    const name = realName(inp.value);
     if(name && !assignees.includes(name)) assignees.push(name);
     inp.value = "";
     renderAssigneeChips();
@@ -3310,7 +3316,7 @@ async function openUserManagerModal(isRefresh){
           ${pending.map(u=>`
             <div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--c-border);">
               <div>
-                <p class="text-sm font-medium text-ink">${esc(u.name)}</p>
+                <p class="text-sm font-medium text-ink">${esc(dn(u.name))}${dn(u.name)!==u.name ? ` <span class="text-xs text-faint">(${esc(u.name)})</span>` : ""}</p>
                 <p class="text-xs text-faint">${esc(u.phone||"")}</p>
               </div>
               <div class="flex gap-2">
@@ -3326,7 +3332,7 @@ async function openUserManagerModal(isRefresh){
         ${approved.map(u=>`
           <div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--c-border);">
             <div>
-              <p class="text-sm font-medium text-ink">${esc(u.name)}${u.name===MASTER_NAME ? " (마스터)" : ""}</p>
+              <p class="text-sm font-medium text-ink">${esc(dn(u.name))}${dn(u.name)!==u.name ? ` <span class="text-xs text-faint">(${esc(u.name)})</span>` : ""}${u.name===MASTER_NAME ? " (마스터)" : ""}</p>
               <p class="text-xs text-faint">${esc(u.phone||"")}</p>
             </div>
             <div class="flex gap-2">
@@ -3654,8 +3660,8 @@ function popoverHTML(item, logId, occ){
     ${row("🕒", esc(src.date ? popWhen(src) : "날짜 없음"))}
     ${(!log && item.repeat_rule) ? row("🔁", esc(repeatLabelFull(item)) + (isDone ? " · <b>이 날짜 완료</b>" : "")) : ""}
     ${src.location ? row("📍", locLink(src.location, false)) : ""}
-    ${(item.owners && item.owners.length) ? row("🙋", "담당: " + item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(n)}</b>`).join(", ")) : ""}
-    ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(esc).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
+    ${(item.owners && item.owners.length) ? row("🙋", "담당: " + item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(dn(n))}</b>`).join(", ")) : ""}
+    ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(a=>esc(dn(a))).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
     ${rem ? row("🔔", esc(rem)) : ""}
     ${row("🏷", `${esc(cat.name)} · ${esc(item.status||"진행중")}`)}
     ${memo ? row("📝", `<span class="ev-pop-memo">${esc(memo.length>100 ? memo.slice(0,100)+"…" : memo)}</span>`) : ""}
