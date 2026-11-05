@@ -97,6 +97,12 @@
   .tb-seg button + button{ border-left:1px solid var(--c-border); }
   .tb-seg button.on{ background:#2b2f36; color:#fff; }
   .tb-btn{ border:1px solid var(--c-border); border-radius:8px; padding:7px 14px; font-size:13px; font-weight:600; background:#fff; color:var(--c-ink); line-height:1.1; }
+  .nd-todos{ margin-top:14px; padding-top:12px; border-top:1px solid var(--c-border); }
+  .nd-title{ font-size:12px; font-weight:700; color:var(--c-muted); margin-bottom:8px; }
+  .nd-row{ display:flex; align-items:center; gap:8px; padding:6px 2px; cursor:pointer; }
+  .nd-text{ font-size:13px; word-break:break-all; color:var(--c-ink); }
+  .nd-row.done .nd-text{ text-decoration:line-through; opacity:.55; }
+  .tb-btn.on{ background:#2b2f36; color:#fff; border-color:#2b2f36; }
   .tb-icon{ border:1px solid var(--c-border); border-radius:8px; padding:6px 10px; background:#fff; color:var(--c-muted); display:inline-flex; align-items:center; }
   .tb-icon.on{ background:#eceef1; color:var(--c-ink); }
   .tb-panel-btn{ display:none; }
@@ -389,6 +395,7 @@ let weekScrollTop = null;
 let calRowHM = 0;                // 모바일 달력 한 줄 높이(화면에 맞춰 재서 저장)
 let listOrder = { "진행중":"asc", "완료":"desc", "보류":"asc" };   // 목록 정렬: desc=최신순, asc=이전순 (탭별로 기억)
 try{ const o = JSON.parse(localStorage.getItem("ptk_listorder")||"null"); if(o) listOrder = { ...listOrder, ...o }; }catch(e){}
+let todoOnly = false;              // 메인 화면의 "할일만 보기" 버튼
 let listKeepIds = new Set();      // 목록에서 방금 완료 처리한 항목(줄이 그어진 채 이 화면에 남겨둠)
 let catSortSupported = true;     // categories.sort_order 컬럼이 있는지
 
@@ -893,6 +900,12 @@ function isTodoCat(catId){
   const c = categories.find(x=>x.id===catId);
   return !!c && /할\s*일/.test(c.name || "");
 }
+// 지금 화면에 보여줄 건들: 선택한 카테고리 + (할일만 보기가 켜져 있으면) 할일 카테고리만
+function scopedItems(){
+  let list = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+  if(todoOnly) list = list.filter(i=>isTodoCat(i.category_id));
+  return list;
+}
 
 async function updateCategory(id, name, color){
   try{
@@ -993,7 +1006,10 @@ function render(){
     </div>
 
     <main class="max-w mx-auto px-4 app-main ${viewMode==="calendar"?"cal-mode":""}">
-      ${activeCat!=="all" ? (()=>{ const c = categories.find(x=>x.id===activeCat); return c ? `<div class="mobile-filter"><span class="mf-chip" style="background:${c.color};">${esc(c.name)}</span><button data-action="clear-cat">✕ 전체 보기</button></div>` : ""; })() : ""}
+      ${(activeCat!=="all" || todoOnly) ? (()=>{
+        const c = activeCat!=="all" ? categories.find(x=>x.id===activeCat) : null;
+        return `<div class="mobile-filter">${c ? `<span class="mf-chip" style="background:${c.color};">${esc(c.name)}</span>` : ""}${todoOnly ? `<span class="mf-chip" style="background:#2b2f36;">☑ 할일만</span>` : ""}<button data-action="clear-cat">✕ 전체 보기</button></div>`;
+      })() : ""}
       ${viewMode==="calendar" ? renderToolbarHTML() : ""}
       <div id="main-body" class="${viewMode==="calendar"?"cal-mode-body":""}"></div>
     </main>
@@ -1582,6 +1598,7 @@ function renderToolbarHTML(){
         <h2 class="tb-title">${calTitle()}</h2>
       </div>
       <div class="tb-right">
+        <button class="tb-btn ${todoOnly?"on":""}" data-action="toggle-todo-only" title="할일만 보기">☑ 할일</button>
         <div class="tb-seg">
           <button class="${calView==="month"?"on":""}" data-action="set-calview" data-v="month">월</button>
           <button class="${calView==="week"?"on":""}" data-action="set-calview" data-v="week">주</button>
@@ -1596,14 +1613,15 @@ function renderToolbarHTML(){
 function renderMainBody(overdueInProgress){
   const body = document.getElementById("main-body");
   if(viewMode==="calendar"){
-    const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+    const scoped = scopedItems();
     if(calView==="week"){
       body.innerHTML = `<div class="cal-area"><div class="cal-main">${renderWeekHTML(scoped)}</div></div>`;
     } else {
       const events = collectCalendarEvents(scoped);
       const agendaItems = sortDayEvents(selectedDate ? events.filter(e=>e.date===selectedDate) : []);
       const agendaLabel = selectedDate ? fmtDate(selectedDate) : "";
-      const panel = showDayPanel ? renderDayPanelHTML(agendaItems) : "";
+      const ndHTML = renderNoDateTodoHTML(noDateTodosOf(scoped));
+      const panel = showDayPanel ? renderDayPanelHTML(agendaItems, ndHTML) : "";
       body.innerHTML = `
         <div class="cal-area"><div class="cal-main">${renderCalendarHTML()}</div>${panel}</div>
         <div class="mobile-agenda">
@@ -1618,11 +1636,12 @@ function renderMainBody(overdueInProgress){
                 : agendaItems.map(e=>renderAgendaCardHTML(e)).join("")}
             ` : ""}
           </div>
+          ${ndHTML}
           <div style="height:70px;"></div>
         </div>`;
     }
   } else {
-    const list = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+    const list = scopedItems();
     const statusOf = i => i.status || "진행중";
     const counts = { "진행중":0, "완료":0, "보류":0 };
     list.forEach(i=>{ const s = statusOf(i); if(counts[s]!==undefined) counts[s]++; });
@@ -1663,6 +1682,7 @@ function renderMainBody(overdueInProgress){
               <button class="${desc?"on":""}" data-action="set-listorder" data-o="desc">최신순</button>
               <button class="${!desc?"on":""}" data-action="set-listorder" data-o="asc">이전순</button>
             </div>
+            <button class="tb-btn ${todoOnly?"on":""}" data-action="toggle-todo-only" title="할일만 보기">☑ 할일</button>
             <button class="tb-btn" data-action="set-view" data-view="calendar">📅 달력</button>
           </div>
         </div>
@@ -1805,7 +1825,7 @@ function renderCalendarHTML(){
   const startWeekday = new Date(year, month, 1).getDay();
   const gridFirst = new Date(year, month, 1 - startWeekday);   // 화면 첫 칸 (이전 달 날짜일 수 있음)
   const todayISO = toISODate(new Date());
-  const scoped = activeCat==="all" ? items : items.filter(i=>i.category_id===activeCat);
+  const scoped = scopedItems();
   const events = collectCalendarEvents(scoped);
   const byDate = {};
   events.forEach(e=>{ (byDate[e.date] = byDate[e.date]||[]).push(e); });
@@ -1905,7 +1925,20 @@ function renderPanelCardHTML(ev){
       ${preview ? `<div class="pn-meta">${esc(preview.length>80 ? preview.slice(0,80)+"…" : preview)}</div>` : ""}
     </div>`;
 }
-function renderDayPanelHTML(agendaItems){
+// 날짜가 없는 할 일은 달력에 나오지 않으니, 할일만 보기에서는 따로 모아서 보여줌 (완료하면 줄이 그어짐)
+function noDateTodosOf(list){
+  return list.filter(i=> !i.date && isTodoCat(i.category_id) && (i.status!=="완료" || listKeepIds.has(i.id)))
+             .sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+}
+function renderNoDateTodoHTML(list){
+  if(!todoOnly) return "";
+  const rows = list.map(it=>{
+    const done = it.status==="완료";
+    return `<div class="nd-row${done?" done":""}" data-action="open-pop" data-id="${it.id}"><button type="button" class="todo-check${done?" on":""}" data-action="toggle-todo" data-id="${it.id}" data-occ="" aria-label="${done?"완료 취소":"완료 처리"}">${done?"✓":""}</button><span class="nd-text">${ownerBadges(it.owners)}${esc(it.title)}</span></div>`;
+  }).join("");
+  return `<div class="nd-todos"><div class="nd-title">기한 없는 할 일 (${list.filter(i=>i.status!=="완료").length})</div>${rows || `<p class="text-xs text-faint" style="padding:4px 2px;">기한 없는 할 일이 없습니다.</p>`}</div>`;
+}
+function renderDayPanelHTML(agendaItems, extraHTML){
   return `
     <aside class="day-panel">
       <div class="pn-head">
@@ -1916,6 +1949,7 @@ function renderDayPanelHTML(agendaItems){
         ${!selectedDate ? "" : agendaItems.length===0
           ? `<p class="text-sm text-faint" style="padding:8px 2px;">등록된 일정이 없습니다.</p>`
           : agendaItems.map(renderPanelCardHTML).join("")}
+        ${extraHTML || ""}
       </div>
     </aside>`;
 }
@@ -2163,7 +2197,7 @@ function bindMainBodyEvents(){
       const it = items.find(i=>i.id===id);
       if(!it) return;
       const next = it.status==="완료" ? "진행중" : "완료";
-      if(viewMode==="list" && next==="완료") listKeepIds.add(id);
+      if((viewMode==="list" || todoOnly) && next==="완료") listKeepIds.add(id);
       setStatus(id, next);
     });
   });
@@ -2239,7 +2273,10 @@ function attachGlobalHandlers(){
   const openDrawerBtn = document.querySelector('[data-action="open-drawer"]');
   if(openDrawerBtn) openDrawerBtn.addEventListener("click", ()=> openDrawer());
   const clearCatBtn = document.querySelector('[data-action="clear-cat"]');
-  if(clearCatBtn) clearCatBtn.addEventListener("click", ()=>{ activeCat = "all"; render(); });
+  if(clearCatBtn) clearCatBtn.addEventListener("click", ()=>{ activeCat = "all"; todoOnly = false; listKeepIds.clear(); render(); });
+  document.querySelectorAll('[data-action="toggle-todo-only"]').forEach(btn=>{
+    btn.addEventListener("click", ()=>{ todoOnly = !todoOnly; listKeepIds.clear(); calRowH = 0; render(); });
+  });
   const openNewItemBtn = document.querySelector('[data-action="open-new-item"]');
   if(openNewItemBtn) openNewItemBtn.addEventListener("click", ()=> openNewItemModal());
   const openSearchBtn = document.querySelector('[data-action="open-search"]');
