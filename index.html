@@ -215,6 +215,19 @@
   .ev-pop-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
   .ev-pop-actions button{ background:#f1f2f4; border-radius:8px; padding:9px 22px; font-size:13px; font-weight:600; color:var(--c-ink); }
   .ev-pop-actions button:hover{ background:#e5e7eb; }
+  .att-box{ margin-top:12px; padding-top:12px; border-top:1px solid var(--c-border); }
+  .att-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+  .att-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px; }
+  .att-tile{ position:relative; border:1px solid var(--c-border); border-radius:10px; overflow:hidden; background:#fff; font-family:'Inter',system-ui,sans-serif; }
+  .att-link{ display:block; }
+  .att-tile img{ width:100%; height:84px; object-fit:cover; display:block; }
+  .att-pdf{ height:84px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:26px; background:#f6f7f9; }
+  .att-pdf span{ font-size:10px; font-weight:700; color:var(--c-muted); }
+  .att-name{ font-size:11px; padding:4px 6px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--c-ink); }
+  .att-meta{ font-size:10px; padding:0 6px 4px; color:var(--c-faint); }
+  .att-x{ position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:999px; background:rgba(0,0,0,.55); color:#fff; font-size:11px; line-height:1; display:flex; align-items:center; justify-content:center; }
+  .att-loading{ min-height:100px; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--c-faint); }
+  .att-chip{ color:var(--c-ink); text-decoration:underline; text-underline-offset:2px; word-break:break-all; }
   .tel-link{ color:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
   .tel-link:hover{ color:#0284C7; }
   .toast{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%); background:#2b2f36; color:#fff; padding:10px 16px; border-radius:999px; font-size:13px; z-index:60; box-shadow:0 4px 14px rgba(0,0,0,.25); }
@@ -683,7 +696,8 @@ async function createItem(payload){
       updated_at: now,
     };
     if(payload.owners && payload.owners.length) row.owners = payload.owners;
-    if(payload.contact) row.contact = payload.contact;           // DB에 칸이 없어도 연락처를 안 쓰는 저장은 그대로 되도록 값이 있을 때만 보냄
+    if(payload.contact) row.contact = payload.contact;
+    if(payload.attachments && payload.attachments.length) row.attachments = payload.attachments;   // 칸이 없는 DB에서도 첨부를 안 쓰는 저장은 그대로 되도록           // DB에 칸이 없어도 연락처를 안 쓰는 저장은 그대로 되도록 값이 있을 때만 보냄
     if(payload.repeatRule) row.repeat_rule = payload.repeatRule;     // 반복 칸이 DB에 없으면 반복을 쓸 때만 오류가 나도록, 값이 있을 때만 보냄
     const created = await apiInsert("items", row);
     items = [created, ...items];
@@ -872,7 +886,9 @@ async function updateItem(itemId, patch){
 
 async function deleteItem(itemId){
   try{
+    const gone = items.find(i=>i.id===itemId);
     await apiDelete("items", itemId);
+    if(gone && gone.attachments) gone.attachments.forEach(a=> deleteAttachmentObject(a.path));    // 건을 지우면 올려둔 파일도 정리
     items = items.filter(i=>i.id!==itemId);
     if(selectedItemId===itemId){
       selectedItemId = null;
@@ -2136,7 +2152,7 @@ function renderAgendaCardHTML(ev, danger){
           <div class="flex items-center gap-2 flex-wrap">
             ${todoCheck}
             <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-            ${sharedBadge}${ownerPills(ev.owners)}
+            ${sharedBadge}${ownerPills(ev.owners)}${(ev.item && ev.item.attachments && ev.item.attachments.length) ? `<span class="text-11 font-mono text-faint">📎${ev.item.attachments.length}</span>` : ""}
             ${danger ? `<span class="text-11 font-mono text-danger">⏰ 미완료</span>` : ""}
             ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
             ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
@@ -2152,7 +2168,7 @@ function renderAgendaCardHTML(ev, danger){
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         ${todoCheck}
         <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-        ${sharedBadge}${ownerPills(ev.owners)}
+        ${sharedBadge}${ownerPills(ev.owners)}${(ev.item && ev.item.attachments && ev.item.attachments.length) ? `<span class="text-11 font-mono text-faint">📎${ev.item.attachments.length}</span>` : ""}
         ${danger ? `<span class="text-11 font-mono text-danger shrink-0">⏰</span>` : ""}
         <span class="font-display text-base font-semibold shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;${titleColor}">${esc(displayTitle)}</span>
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
@@ -2387,6 +2403,7 @@ function renderDetailPage(){
               ${getReminders(item).length ? `<span>🔔 ${esc(reminderSummary(item))}</span>` : ""}
               ${item.assignees?.length ? `<span>👤 ${item.assignees.map(a=>`<span class="avatar" title="${esc(dn(a))}">${esc(dn(a).slice(0,1))}</span>`).join(" ")} ${item.assignees.map(a=>esc(dn(a))).join(", ")}</span>` : ""}
             </div>
+            ${attachmentsSectionHTML(item)}
             ${item.category_id!==CAT_PROGRESS ? `<button class="btn-soft mt-3" data-action="convert-progress">진행사항으로 전환</button>` : ""}
             ${linkedChildren.length>0 ? `
               <div class="mt-3">
@@ -2441,6 +2458,15 @@ function bindDetailEvents(item){
   container.querySelector('[data-action="edit-item"]').addEventListener("click", ()=> openEditItemModal(item));
   container.querySelectorAll('[data-action="set-status"]').forEach(el=>{
     el.addEventListener("click", ()=> setStatus(item.id, el.dataset.status));
+  });
+  const attInput = container.querySelector("#att-input");
+  const attAddBtn = container.querySelector('[data-action="att-add"]');
+  if(attInput && attAddBtn){
+    attAddBtn.addEventListener("click", ()=> attInput.click());
+    attInput.addEventListener("change", ()=>{ const files = [...attInput.files]; attInput.value = ""; addAttachmentsToItem(item.id, files); });
+  }
+  container.querySelectorAll('[data-action="att-remove"]').forEach(btn=>{
+    btn.addEventListener("click", (e)=>{ e.stopPropagation(); removeAttachmentFromItem(item.id, btn.dataset.id); });
   });
   const convertBtn = container.querySelector('[data-action="convert-progress"]');
   if(convertBtn) convertBtn.addEventListener("click", ()=> convertToProgress(item.id));
@@ -2557,6 +2583,7 @@ function openNewItemModal(initialDate){
   let reminderEditor = null;
   let todoUI = null;
   let ownerUI = null;
+  let attUI = null;
 
   function renderCaseSearch(){
     const wrap = backdrop.querySelector("#case-search-wrap");
@@ -2589,6 +2616,7 @@ function openNewItemModal(initialDate){
   function renderFormFields(){
     assignees = [];
     ownerUI = null;
+    attUI = null;
     const fieldsEl = backdrop.querySelector("#form-fields");
     fieldsEl.classList.add("todo-scope");
     fieldsEl.classList.remove("todo-mode");
@@ -2682,6 +2710,8 @@ function openNewItemModal(initialDate){
           <button type="button" class="btn-soft" id="f-add-assignee">추가</button>
         </div>
         <div class="flex flex-wrap gap-2 mb-2" id="assignee-chips"></div>
+        <label class="label">첨부파일 (선택)</label>
+        <div id="att-form" class="mb-3"></div>
         <div class="gen-only">
         <label class="label">내용 (선택)</label>
         <textarea id="f-note" class="input mb-4" rows="2" style="resize:none;" placeholder="미팅 메모, 통화 내용 등"></textarea>
@@ -2719,6 +2749,7 @@ function openNewItemModal(initialDate){
       applyTodoMode();
       // 날짜 칸(달력)에서 '이 날짜에 등록'으로 열었으면 그날 하루짜리로, 아니면 '기한 없음'으로 시작
       todoUI = setupTodoFields(fieldsEl.querySelector(".todo-only"), { initialStart: initialDate||"", initialDue: initialDate||"" });
+      attUI = setupAttachmentPicker(backdrop.querySelector("#att-form"));
       ownerUI = setupOwnerPicker(backdrop.querySelector("#owner-picker"), [], (name)=>{
         if(name!==currentUser && !assignees.includes(name)){ assignees.push(name); renderAssigneeChips(); }
       });
@@ -2777,6 +2808,7 @@ function openNewItemModal(initialDate){
   renderFormFields();
 
   backdrop.querySelector("#f-submit").addEventListener("click", ()=>{
+    if(attUI && attUI.busy()){ alert("파일을 올리는 중이에요. 잠시 뒤에 다시 눌러주세요."); return; }
     if(selectedParent){
       addSubEntry(selectedParent.id, {
         subtitle: backdrop.querySelector("#f-subtitle").value.trim(),
@@ -2810,6 +2842,7 @@ function openNewItemModal(initialDate){
         firstNote: "",
         repeatRule: tv.rule,
         owners: ownerUI ? ownerUI.get() : [],
+        attachments: attUI ? attUI.get() : [],
       });
     } else {
       const title = backdrop.querySelector("#f-title").value.trim();
@@ -2829,6 +2862,7 @@ function openNewItemModal(initialDate){
         assignees,
         firstNote: backdrop.querySelector("#f-note").value,
         owners: ownerUI ? ownerUI.get() : [],
+        attachments: attUI ? attUI.get() : [],
       });
     }
   });
@@ -3727,6 +3761,7 @@ function popoverHTML(item, logId, occ){
     ${(!log && item.repeat_rule) ? row("🔁", esc(repeatLabelFull(item)) + (isDone ? " · <b>이 날짜 완료</b>" : "")) : ""}
     ${src.location ? row("📍", locLink(src.location, false)) : ""}
     ${src.contact ? row("📞", contactLink(src.contact, false)) : ""}
+    ${(!log && item.attachments && item.attachments.length) ? row("📎", item.attachments.map(a=>`<a class="att-chip" href="${esc(attUrl(a))}" target="_blank" rel="noopener">${esc(a.name)}</a>`).join("<br>")) : ""}
     ${(item.owners && item.owners.length) ? row("🙋", "담당: " + item.owners.map(n=>`<b style="color:${ownerColor(n)}">${esc(dn(n))}</b>`).join(", ")) : ""}
     ${row(assignees.length ? "👥" : "🔒", assignees.length ? `공유: ${assignees.map(a=>esc(dn(a))).join(", ")}` : "비공개 (본인만 볼 수 있음)")}
     ${rem ? row("🔔", esc(rem)) : ""}
@@ -3819,6 +3854,190 @@ function naverMapWebUrl(q){ return `https://map.naver.com/p/search/${encodeURICo
 function locLink(loc, withIcon=true){
   return `<a class="loc-link" data-action="open-map" data-q="${esc(loc)}" href="${naverMapWebUrl(loc)}" target="_blank" rel="noopener" title="네이버지도로 열기">${withIcon?"📍 ":""}${esc(loc)}</a>`;
 }
+/* ---------- 첨부파일 (이미지 · PDF) ---------- */
+const ATT_BUCKET = "attachments";
+const ATT_MAX_PDF = 10 * 1024 * 1024;     // PDF는 10MB까지
+const ATT_MAX_GIF = 5 * 1024 * 1024;
+const ATT_MAX_IMG_RAW = 30 * 1024 * 1024; // 사진 원본이 이보다 크면 줄이기 전에 거절
+
+// 가로·세로 중 긴 쪽이 max를 넘으면 비율을 지켜서 줄인 크기
+function fitSize(w, h, max){
+  const longest = Math.max(w, h);
+  if(longest <= max) return { w, h };
+  const r = max / longest;
+  return { w: Math.round(w*r), h: Math.round(h*r) };
+}
+function fmtBytes(n){
+  n = Number(n) || 0;
+  if(n < 1024) return `${n}B`;
+  if(n < 1024*1024) return `${Math.round(n/1024)}KB`;
+  return `${(n/1024/1024).toFixed(1)}MB`;
+}
+function attUrl(att){ return `${SUPABASE_URL}/storage/v1/object/public/${ATT_BUCKET}/${att.path}`; }
+function attIsImage(att){ return String(att.type||"").startsWith("image/"); }
+
+// 큰 사진은 올리기 전에 긴 쪽 1600px 로 줄여서 용량을 아끼고 빠르게 올림 (줄일 수 없으면 원본 그대로)
+async function downscaleImage(file, maxDim=1600, quality=0.82){
+  if(file.type==="image/gif"){
+    if(file.size > ATT_MAX_GIF) throw new Error("GIF는 5MB까지 올릴 수 있어요");
+    return { blob:file, type:"image/gif" };
+  }
+  if(file.size > ATT_MAX_IMG_RAW) throw new Error("사진 용량이 너무 커요 (30MB 이하로 올려주세요)");
+  try{
+    const bmp = (typeof createImageBitmap==="function") ? await createImageBitmap(file) : await new Promise((res, rej)=>{
+      const url = URL.createObjectURL(file); const im = new Image();
+      im.onload = ()=>{ URL.revokeObjectURL(url); res(im); };
+      im.onerror = ()=>{ URL.revokeObjectURL(url); rej(new Error("decode")); };
+      im.src = url;
+    });
+    const w0 = bmp.width || bmp.naturalWidth, h0 = bmp.height || bmp.naturalHeight;
+    if(!w0 || !h0) throw new Error("decode");
+    const { w, h } = fitSize(w0, h0, maxDim);
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);          // 투명한 PNG가 검게 나오지 않도록
+    ctx.drawImage(bmp, 0, 0, w, h);
+    const blob = await new Promise(r=> canvas.toBlob(r, "image/jpeg", quality));
+    if(!blob) throw new Error("encode");
+    // 이미 작은 사진이라 줄였더니 오히려 커졌으면 원본 사용
+    if(blob.size >= file.size && ["image/jpeg","image/png","image/webp"].includes(file.type)) return { blob:file, type:file.type };
+    return { blob, type:"image/jpeg" };
+  }catch(e){
+    if(["image/jpeg","image/png","image/webp"].includes(file.type) && file.size <= ATT_MAX_PDF) return { blob:file, type:file.type };
+    throw new Error("이 사진 형식은 올릴 수 없어요 (JPG·PNG 사진으로 바꿔서 올려주세요)");
+  }
+}
+async function prepareFile(file){
+  if(file.type==="application/pdf"){
+    if(file.size > ATT_MAX_PDF) throw new Error("PDF는 10MB까지 올릴 수 있어요");
+    return { blob:file, type:"application/pdf" };
+  }
+  if(String(file.type).startsWith("image/")) return await downscaleImage(file);
+  throw new Error("이미지(사진)와 PDF만 올릴 수 있어요");
+}
+// 파일을 저장소에 올리고, 건에 붙일 정보({id,name,path,type,size,by,at})를 돌려줌
+async function uploadAttachment(file){
+  const prep = await prepareFile(file);
+  const ext = ({ "application/pdf":"pdf", "image/png":"png", "image/gif":"gif", "image/webp":"webp" })[prep.type] || "jpg";
+  const id = uid("att");
+  const path = `${new Date().toISOString().slice(0,7)}/${id}.${ext}`;   // 저장 경로는 영문·숫자만 (원래 파일 이름은 따로 보관)
+  let res;
+  try{
+    res = await fetch(`${SUPABASE_URL}/storage/v1/object/${ATT_BUCKET}/${path}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": prep.type, "x-upsert": "false" },
+      body: prep.blob,
+    });
+  }catch(e){ throw new Error("인터넷 연결을 확인해주세요"); }
+  if(!res.ok) throw new Error(`파일을 올리지 못했어요 (${res.status}). 저장소 설정(migration-attachments.sql)이 되어 있는지 확인해주세요`);
+  return { id, name: file.name || `파일.${ext}`, path, type: prep.type, size: prep.blob.size, by: currentUser, at: new Date().toISOString() };
+}
+async function deleteAttachmentObject(path){
+  try{
+    await fetch(`${SUPABASE_URL}/storage/v1/object/${ATT_BUCKET}/${path}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+  }catch(e){ /* 지우지 못해도 앱에는 영향 없음 */ }
+}
+
+function attTileHTML(att, removable){
+  const url = attUrl(att);
+  const thumb = attIsImage(att)
+    ? `<img src="${esc(url)}" loading="lazy" alt="${esc(att.name)}">`
+    : `<div class="att-pdf">📄<span>PDF</span></div>`;
+  return `
+    <div class="att-tile">
+      <a class="att-link" href="${esc(url)}" target="_blank" rel="noopener" title="눌러서 열기">${thumb}</a>
+      <div class="att-name" title="${esc(att.name)}">${esc(att.name)}</div>
+      <div class="att-meta">${fmtBytes(att.size)}</div>
+      ${removable ? `<button type="button" class="att-x" data-action="att-remove" data-id="${esc(att.id)}" aria-label="첨부 삭제">✕</button>` : ""}
+    </div>`;
+}
+// 상세 화면의 첨부 구역 (바로 올리고 지울 수 있음)
+function attachmentsSectionHTML(item){
+  const list = item.attachments || [];
+  return `
+    <div class="att-box">
+      <div class="att-head">
+        <span class="text-11 font-mono text-faint">📎 첨부파일${list.length ? ` (${list.length})` : ""}</span>
+        <button type="button" class="btn-soft" style="padding:4px 10px;font-size:12px;" data-action="att-add">＋ 파일 추가</button>
+        <input type="file" id="att-input" class="hidden" multiple accept="image/*,application/pdf" />
+      </div>
+      ${list.length ? `<div class="att-grid">${list.map(a=>attTileHTML(a, true)).join("")}</div>` : `<p class="text-xs text-faint">사진이나 PDF를 올릴 수 있어요 (PDF는 10MB까지).</p>`}
+    </div>`;
+}
+async function addAttachmentsToItem(itemId, files){
+  const item = items.find(i=>i.id===itemId);
+  if(!item || !files.length) return;
+  showToast("파일 올리는 중…");
+  const added = [];
+  for(const f of files){
+    try{ added.push(await uploadAttachment(f)); }
+    catch(e){ alert(`${f.name}\n${e.message}`); }
+  }
+  if(!added.length) return;
+  try{
+    const fresh = items.find(i=>i.id===itemId) || item;
+    const updated = await apiUpdate("items", itemId, { attachments: [...(fresh.attachments||[]), ...added], updated_at: new Date().toISOString() });
+    items = items.map(i=>i.id===updated.id ? updated : i);
+    render();
+    showToast(`${added.length}개 올렸어요`);
+  }catch(err){
+    alert("첨부를 저장하지 못했어요: " + err.message + "\n(Supabase에서 migration-attachments.sql 을 실행했는지 확인해주세요)");
+    added.forEach(a=> deleteAttachmentObject(a.path));
+  }
+}
+async function removeAttachmentFromItem(itemId, attId){
+  const item = items.find(i=>i.id===itemId);
+  const att = item && (item.attachments||[]).find(a=>a.id===attId);
+  if(!att) return;
+  if(!confirm(`"${att.name}" 파일을 삭제할까요?`)) return;
+  try{
+    const updated = await apiUpdate("items", itemId, { attachments: (item.attachments||[]).filter(a=>a.id!==attId), updated_at: new Date().toISOString() });
+    items = items.map(i=>i.id===updated.id ? updated : i);
+    deleteAttachmentObject(att.path);
+    render();
+  }catch(err){
+    alert("삭제하지 못했어요: " + err.message);
+  }
+}
+// 새 건 등록 창의 첨부 칸 (올려둔 파일 목록을 들고 있다가 등록할 때 같이 저장)
+function setupAttachmentPicker(container){
+  let list = [], uploading = 0;
+  container.innerHTML = `
+    <div class="att-form-grid"></div>
+    <button type="button" class="btn-soft att-add-btn" style="padding:6px 12px;font-size:13px;">＋ 파일 추가</button>
+    <input type="file" class="hidden att-file-input" multiple accept="image/*,application/pdf" />
+    <p class="text-11 text-faint" style="margin-top:6px;">사진이나 PDF (PDF는 10MB까지)</p>`;
+  const gridEl = container.querySelector(".att-form-grid"), input = container.querySelector(".att-file-input"), addBtn = container.querySelector(".att-add-btn");
+  function render(){
+    gridEl.innerHTML = list.length || uploading
+      ? `<div class="att-grid" style="margin-bottom:8px;">${list.map(a=>attTileHTML(a, true)).join("")}${uploading ? `<div class="att-tile att-loading">올리는 중…</div>` : ""}</div>`
+      : "";
+    gridEl.querySelectorAll('[data-action="att-remove"]').forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const a = list.find(x=>x.id===btn.dataset.id);
+        list = list.filter(x=>x.id!==btn.dataset.id);
+        if(a) deleteAttachmentObject(a.path);
+        render();
+      });
+    });
+  }
+  addBtn.addEventListener("click", ()=> input.click());
+  input.addEventListener("change", async ()=>{
+    const files = [...input.files]; input.value = "";
+    for(const f of files){
+      uploading++; render();
+      try{ list.push(await uploadAttachment(f)); }
+      catch(e){ alert(`${f.name}\n${e.message}`); }
+      finally{ uploading--; render(); }
+    }
+  });
+  return { get: ()=> [...list], busy: ()=> uploading>0 };
+}
+
 /* ---------- 연락처 (눌러서 전화) ---------- */
 const PHONE_RE = /\+?\d[\d\-.\s()]{5,}\d/g;
 // 글 안에서 전화번호로 보이는 부분을 찾아 [{t:글자, tel:숫자}, ...] 로 나눔 (날짜처럼 보이는 숫자는 제외)
