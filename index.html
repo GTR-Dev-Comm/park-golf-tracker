@@ -97,6 +97,8 @@
   .tb-seg button + button{ border-left:1px solid var(--c-border); }
   .tb-seg button.on{ background:#2b2f36; color:#fff; }
   .tb-btn{ border:1px solid var(--c-border); border-radius:8px; padding:7px 14px; font-size:13px; font-weight:600; background:#fff; color:var(--c-ink); line-height:1.1; }
+  .today-head{ font-family:'Fraunces',serif; font-size:14px; font-weight:700; color:var(--c-forest); padding:4px 0 8px; border-bottom:2px solid var(--c-forest); margin-bottom:8px; }
+  .rest-head{ font-size:12px; color:var(--c-faint); margin:4px 0 12px; }
   .nd-todos{ margin-top:14px; padding-top:12px; border-top:1px solid var(--c-border); }
   .nd-title{ font-size:12px; font-weight:700; color:var(--c-muted); margin-bottom:8px; }
   .nd-row{ display:flex; align-items:center; gap:8px; padding:6px 2px; cursor:pointer; }
@@ -1681,9 +1683,15 @@ function renderMainBody(overdueInProgress){
       return new Date(b.updated_at)-new Date(a.updated_at);
     });
 
+    // 오늘 일정은 맨 위에 따로 보여주고, 나머지는 그 아래에 (오늘 칸에서 이미 보여준 건은 아래에서 뺌)
+    const todayISO = toISODate(new Date());
+    const todayEvents = sortDayEvents(collectCalendarEvents(filtered, { from:todayISO, to:todayISO }).filter(e=>e.date===todayISO));
+    const shownToday = new Set(todayEvents.filter(e=>!e.isSub).map(e=>e.parentId));
+    const rest = sorted.filter(i=>!shownToday.has(i.id));
+
     const groups = [];
     let lastKey = null;
-    sorted.forEach(i=>{
+    rest.forEach(i=>{
       const key = i.date ? `${new Date(i.date).getFullYear()}년 ${new Date(i.date).getMonth()+1}월` : "날짜 없음";
       if(key !== lastKey){
         groups.push({ key, items: [] });
@@ -1718,12 +1726,18 @@ function renderMainBody(overdueInProgress){
             <div class="text-center text-faint" style="padding:48px 0;">
               <p class="font-display text-lg mb-1 text-ink">${listStatus} 상태의 건이 없습니다</p>
               <p class="text-sm">위의 탭에서 다른 상태를 선택해보세요.</p>
-            </div>` : groups.map(g => `
-              <div class="mb-4">
-                <p class="font-display text-sm font-semibold text-muted" style="padding:4px 0 8px 0;border-bottom:1px solid var(--c-border);margin-bottom:8px;">${g.key}</p>
-                ${g.items.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}
+            </div>` : `
+              <div class="mb-4 today-block">
+                <p class="today-head">오늘 · ${esc(fmtLongDate(todayISO))}${todayEvents.length ? ` (${todayEvents.length})` : ""}</p>
+                ${todayEvents.length ? todayEvents.map(e=>renderAgendaCardHTML(e)).join("") : `<p class="text-sm text-faint" style="padding:6px 2px;">오늘 일정이 없습니다.</p>`}
               </div>
-            `).join("")}
+              ${rest.length ? `<p class="rest-head">그 외 일정</p>` : ""}
+              ${groups.map(g => `
+                <div class="mb-4">
+                  <p class="font-display text-sm font-semibold text-muted" style="padding:4px 0 8px 0;border-bottom:1px solid var(--c-border);margin-bottom:8px;">${g.key}</p>
+                  ${g.items.map(i=>renderAgendaCardHTML(itemToEvent(i))).join("")}
+                </div>
+              `).join("")}`}
         </div>
       </div>
     `;
@@ -2139,6 +2153,7 @@ function renderAgendaCardHTML(ev, danger){
   const titleColor = (danger ? "color:var(--c-danger);" : "") + ((ev.done || (todoEv && ev.status==="완료")) ? "text-decoration:line-through;opacity:.6;" : "");
   const todoCheck = todoEv ? `<button type="button" class="todo-check${todoChecked?" on":""}" data-action="toggle-todo" data-id="${ev.parentId}" data-occ="${ev.occDate||""}" aria-label="${todoChecked?"완료 취소":"완료 처리"}">${todoChecked?"✓":""}</button>` : "";
   const displayTitle = (ev.repeat ? "↻ " : "") + (ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title);
+  const dateText = whenLabel(ev) || (todoEv ? "기한 없음" : "날짜 없음");
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
   const deleteBtn = !ev.isSub ? `<button class="text-faint" data-action="delete-item" data-id="${ev.parentId}" title="삭제">🗑</button>` : "";
   const isShared = ev.assignees && ev.assignees.length>0;
@@ -2148,6 +2163,7 @@ function renderAgendaCardHTML(ev, danger){
   return `
     <div class="agenda-card" style="border-left:4px solid ${borderColor}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${ev.parentId}">
       <div class="agenda-mobile">
+        <p class="text-sm font-mono mb-1" style="font-weight:600;${danger ? "color:var(--c-danger);" : "color:var(--c-ink);"}">${esc(dateText)}</p>
         <div class="flex items-center justify-between mb-1">
           <div class="flex items-center gap-2 flex-wrap">
             ${todoCheck}
@@ -2160,19 +2176,18 @@ function renderAgendaCardHTML(ev, danger){
           ${deleteBtn}
         </div>
         <p class="font-display text-base font-semibold mb-1" style="${titleColor}">${esc(displayTitle)}${ev.location ? ` - ${locLink(ev.location, false)}` : ""}</p>
-        <p class="text-sm text-muted font-mono mb-1">${whenLabel(ev)}</p>
         ${ev.contact ? `<p class="text-xs text-muted" style="white-space:normal;margin-bottom:2px;">${contactLink(ev.contact)}</p>` : ""}
         ${preview ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(preview)}</p>` : ""}
         ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(a=>esc(dn(a))).join(", ")}</p>` : ""}
       </div>
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
+        <span class="text-sm font-mono shrink-0" style="min-width:104px;font-weight:600;${danger ? 'color:var(--c-danger);' : 'color:var(--c-ink);'}">${esc(dateText)}</span>
         ${todoCheck}
         <span class="text-11 font-mono shrink-0" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
         ${sharedBadge}${ownerPills(ev.owners)}${(ev.item && ev.item.attachments && ev.item.attachments.length) ? `<span class="text-11 font-mono text-faint">📎${ev.item.attachments.length}</span>` : ""}
         ${danger ? `<span class="text-11 font-mono text-danger shrink-0">⏰</span>` : ""}
         <span class="font-display text-base font-semibold shrink-0" style="max-width:38%;overflow:hidden;text-overflow:ellipsis;${titleColor}">${esc(displayTitle)}</span>
         ${preview ? `<span class="text-sm text-faint" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(preview)}</span>` : `<span style="flex:1;"></span>`}
-        <span class="text-sm font-mono shrink-0" style="${danger ? 'color:var(--c-danger);' : 'color:var(--c-muted);'}">${whenLabel(ev)}</span>
         ${ev.location ? `<span class="text-sm text-faint shrink-0">${locLink(ev.location)}</span>` : ""}
         ${ev.contact ? `<span class="text-sm text-faint shrink-0">${contactLink(ev.contact)}</span>` : ""}
         ${ev.assignees?.length ? `<span class="text-xs text-faint shrink-0">👤 ${ev.assignees.map(a=>esc(dn(a))).join(", ")}</span>` : ""}
