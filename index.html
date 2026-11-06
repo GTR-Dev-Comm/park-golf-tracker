@@ -104,6 +104,10 @@
   .nd-row{ display:flex; align-items:center; gap:8px; padding:6px 2px; cursor:pointer; }
   .nd-text{ font-size:13px; word-break:break-all; color:var(--c-ink); }
   .nd-row.done .nd-text{ text-decoration:line-through; opacity:.55; }
+  .chip-row.cat-collapsed{ display:none; }
+  .tb-filter{ display:inline-flex; align-items:center; gap:6px; color:#fff; font-size:12px; font-weight:600; padding:4px 6px 4px 10px; border-radius:999px; }
+  .tb-filter button{ color:#fff; opacity:.85; font-size:11px; line-height:1; padding:2px 4px; }
+  @media (max-width:767px){ .tb-cat, .tb-filter{ display:none; } }
   .tb-btn.on{ background:#2b2f36; color:#fff; border-color:#2b2f36; }
   .tb-icon{ border:1px solid var(--c-border); border-radius:8px; padding:6px 10px; background:#fff; color:var(--c-muted); display:inline-flex; align-items:center; }
   .tb-icon.on{ background:#eceef1; color:var(--c-ink); }
@@ -412,6 +416,8 @@ let selectedItemId = null;
 let calView = "month";          // "month" | "week"
 let showDayPanel = true;         // 월간 보기의 오른쪽 일간 일정 패널
 try{ showDayPanel = localStorage.getItem("ptk_panel") !== "0"; }catch(e){}
+let catRowHidden = false;       // PC: 위쪽 카테고리 칩 줄 숨기기 (달력을 더 크게)
+try{ catRowHidden = localStorage.getItem("ptk_cathide") === "1"; }catch(e){}
 let listStatus = "진행중";        // 목록 보기의 상태 탭
 let calRowH = 0, calCapUsed = 0, calRerenders = 0;
 let weekScrollTop = null;
@@ -1041,7 +1047,7 @@ function render(){
         </div>
       </div>
     </header>
-    <div class="chip-row max-w mx-auto">
+    <div class="chip-row max-w mx-auto${(catRowHidden && viewMode==="calendar") ? " cat-collapsed" : ""}">
       <button class="chip ${activeCat==="all"?"active":""}" data-action="set-cat" data-cat="all">전체 ${items.length}</button>
       ${categories.map(c=>{
         const count = items.filter(i=>i.category_id===c.id).length;
@@ -1652,6 +1658,8 @@ function renderToolbarHTML(){
         <h2 class="tb-title">${calTitle()}</h2>
       </div>
       <div class="tb-right">
+        ${(catRowHidden && activeCat!=="all") ? (()=>{ const c = categories.find(x=>x.id===activeCat); return c ? `<span class="tb-filter" style="background:${c.color};">${esc(c.name)}<button type="button" data-action="clear-cat-only" aria-label="카테고리 선택 해제">✕</button></span>` : ""; })() : ""}
+        <button class="tb-btn tb-cat" data-action="toggle-catrow" title="${catRowHidden ? "카테고리 줄 보이기" : "카테고리 줄 숨기기 (달력을 더 크게)"}" aria-label="카테고리 줄 ${catRowHidden ? "보이기" : "숨기기"}">🏷 카테고리 ${catRowHidden ? "▼" : "▲"}</button>
         <button class="tb-btn ${todoOnly?"on":""}" data-action="toggle-todo-only" title="할일만 보기">☑ 할일</button>
         <div class="tb-seg">
           <button class="${calView==="month"?"on":""}" data-action="set-calview" data-v="month">월</button>
@@ -2345,8 +2353,9 @@ function attachGlobalHandlers(){
   });
   const openDrawerBtn = document.querySelector('[data-action="open-drawer"]');
   if(openDrawerBtn) openDrawerBtn.addEventListener("click", ()=> openDrawer());
-  const clearCatBtn = document.querySelector('[data-action="clear-cat"]');
-  if(clearCatBtn) clearCatBtn.addEventListener("click", ()=>{ activeCat = "all"; todoOnly = false; listKeepIds.clear(); render(); });
+  document.querySelectorAll('[data-action="clear-cat"]').forEach(clearCatBtn=>{
+    clearCatBtn.addEventListener("click", ()=>{ activeCat = "all"; todoOnly = false; listKeepIds.clear(); render(); });
+  });
   document.querySelectorAll('[data-action="toggle-todo-only"]').forEach(btn=>{
     btn.addEventListener("click", ()=>{ todoOnly = !todoOnly; listKeepIds.clear(); calRowH = 0; render(); });
   });
@@ -2391,6 +2400,17 @@ function attachGlobalHandlers(){
     try{ localStorage.setItem("ptk_panel", showDayPanel ? "1" : "0"); }catch(e){}
     calRowH = 0;
     render();
+  });
+  document.querySelectorAll('[data-action="clear-cat-only"]').forEach(btn=>{
+    btn.addEventListener("click", ()=>{ activeCat = "all"; render(); });
+  });
+  document.querySelectorAll('[data-action="toggle-catrow"]').forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      catRowHidden = !catRowHidden;
+      try{ localStorage.setItem("ptk_cathide", catRowHidden ? "1" : "0"); }catch(e){}
+      calRowH = 0;          // 달력 높이가 달라지니 칸 높이를 다시 재도록
+      render();
+    });
   });
   document.querySelectorAll('[data-action="set-listorder"]').forEach(el=>{
     el.addEventListener("click", ()=>{
