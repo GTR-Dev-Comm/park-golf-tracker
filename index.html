@@ -286,6 +286,11 @@
 
   .agenda-mobile{ display:none; }
   .agenda-desktop{ display:flex; }
+  @media (max-width:767px){
+    .agenda-desktop{ display:none !important; }
+    .agenda-mobile{ display:block !important; }
+  }
+  .own-sm{ display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 4px; border-radius:999px; font-size:11px; font-weight:700; line-height:1; }
 
 </style>
 </head>
@@ -495,6 +500,21 @@ function hasFollowUp(item){
   const createdAt = new Date(item.created_at).getTime();
   // 건이 처음 만들어진 시각보다 1분 이상 나중에 추가된 기록이 있으면 "후속 기록 있음"으로 판단
   return logs.some(l => new Date(l.created_at).getTime() > createdAt + 60000);
+}
+// 휴대폰용 짧은 날짜: 11/6, 11/6 14:00, 10/24~10/30 (요일·'월/일' 글자 생략)
+function mdShort(iso){ const p = String(iso).split("-"); return `${Number(p[1])}/${Number(p[2])}`; }
+function whenLabelShort(item){
+  if(!item.date) return "";
+  const hasRange = item.end_date && item.end_date !== item.date;
+  const s1 = mdShort(item.date), e1 = hasRange ? mdShort(item.end_date) : "";
+  if(item.all_day===false){
+    const t1 = item.time || "", t2 = item.end_time || "";
+    if(hasRange) return `${s1}${t1 ? ` ${t1}` : ""}~${e1}${t2 ? ` ${t2}` : ""}`;
+    if(t1 && t2) return `${s1} ${t1}~${t2}`;
+    if(t1) return `${s1} ${t1}`;
+    return s1;
+  }
+  return hasRange ? `${s1}~${e1}` : s1;
 }
 function whenLabel(item){
   if(!item.date) return "";
@@ -1536,6 +1556,11 @@ function ownerBadges(owners){
   return owners.map(n=>`<span class="own" style="color:${ownerColor(n)}" title="담당: ${esc(dn(n))}">${esc(ownerInitial(n))}</span>`).join("");
 }
 // 카드에 붙는 이름표
+// 휴대폰 카드용: 담당자는 색깔 동그라미에 이름 첫 글자만
+function ownerInitialPills(owners){
+  if(!owners || !owners.length) return "";
+  return owners.map(n=>`<span class="own-sm" style="background:${ownerColor(n)}1A;color:${ownerColor(n)};" title="담당: ${esc(dn(n))}">${esc(ownerInitial(n))}</span>`).join("");
+}
 function ownerPills(owners){
   if(!owners || !owners.length) return "";
   return owners.map(n=>`<span class="own-pill" style="background:${ownerColor(n)}1A;color:${ownerColor(n)};">🙋 ${esc(dn(n))}</span>`).join("");
@@ -2154,6 +2179,7 @@ function renderAgendaCardHTML(ev, danger){
   const todoCheck = todoEv ? `<button type="button" class="todo-check${todoChecked?" on":""}" data-action="toggle-todo" data-id="${ev.parentId}" data-occ="${ev.occDate||""}" aria-label="${todoChecked?"완료 취소":"완료 처리"}">${todoChecked?"✓":""}</button>` : "";
   const displayTitle = (ev.repeat ? "↻ " : "") + (ev.subtitle ? `${ev.title} · ${ev.subtitle}` : ev.title);
   const dateText = whenLabel(ev) || (todoEv ? "기한 없음" : "날짜 없음");
+  const dateShort = whenLabelShort(ev) || (todoEv ? "기한 없음" : "날짜 없음");
   const preview = ev.isSub ? (ev.log.content||"") : (ev.item.logs && ev.item.logs.length ? ev.item.logs[ev.item.logs.length-1].content : "");
   const deleteBtn = !ev.isSub ? `<button class="text-faint" data-action="delete-item" data-id="${ev.parentId}" title="삭제">🗑</button>` : "";
   const isShared = ev.assignees && ev.assignees.length>0;
@@ -2163,12 +2189,15 @@ function renderAgendaCardHTML(ev, danger){
   return `
     <div class="agenda-card" style="border-left:4px solid ${borderColor}; background:#fff; border:1px solid var(--c-border); border-radius:12px; padding:12px 14px; margin-bottom:8px; cursor:pointer;" data-action="open-item" data-id="${ev.parentId}">
       <div class="agenda-mobile">
-        <p class="text-sm font-mono mb-1" style="font-weight:600;${danger ? "color:var(--c-danger);" : "color:var(--c-ink);"}">${esc(dateText)}</p>
         <div class="flex items-center justify-between mb-1">
           <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-sm font-mono" style="font-weight:700;${danger ? "color:var(--c-danger);" : "color:var(--c-ink);"}">${esc(dateShort)}</span>
             ${todoCheck}
             <span class="text-11 font-mono" style="background:${cat.color}1A;color:${cat.color};padding:2px 6px;border-radius:6px;">${esc(cat.name)}</span>
-            ${sharedBadge}${ownerPills(ev.owners)}${(ev.item && ev.item.attachments && ev.item.attachments.length) ? `<span class="text-11 font-mono text-faint">📎${ev.item.attachments.length}</span>` : ""}
+            <span style="font-size:13px;line-height:1;" title="${isShared ? "공유됨" : "비공개"}">${isShared ? "🔗" : "🔒"}</span>
+            ${ownerInitialPills(ev.owners)}
+            ${ev.assignees?.length ? `<span class="text-11 font-mono text-faint" title="${esc(ev.assignees.map(a=>dn(a)).join(", "))}">👤 ${ev.assignees.map(a=>esc(dn(a).slice(0,1))).join(" ")}</span>` : ""}
+            ${(ev.item && ev.item.attachments && ev.item.attachments.length) ? `<span class="text-11 font-mono text-faint">📎${ev.item.attachments.length}</span>` : ""}
             ${danger ? `<span class="text-11 font-mono text-danger">⏰ 미완료</span>` : ""}
             ${ev.status==="완료" ? `<span class="text-11 font-mono text-done">✓ 완료</span>` : ""}
             ${ev.status==="보류" ? `<span class="text-11 font-mono text-faint">보류</span>` : ""}
@@ -2178,7 +2207,6 @@ function renderAgendaCardHTML(ev, danger){
         <p class="font-display text-base font-semibold mb-1" style="${titleColor}">${esc(displayTitle)}${ev.location ? ` - ${locLink(ev.location, false)}` : ""}</p>
         ${ev.contact ? `<p class="text-xs text-muted" style="white-space:normal;margin-bottom:2px;">${contactLink(ev.contact)}</p>` : ""}
         ${preview ? `<p class="text-xs text-faint" style="white-space:normal;">${esc(preview)}</p>` : ""}
-        ${ev.assignees?.length ? `<p class="text-xs text-faint" style="white-space:normal;margin-top:2px;">👤 ${ev.assignees.map(a=>esc(dn(a))).join(", ")}</p>` : ""}
       </div>
       <div class="agenda-desktop" style="display:flex; align-items:center; gap:10px; white-space:nowrap; overflow:hidden;">
         <span class="text-sm font-mono shrink-0" style="min-width:104px;font-weight:600;${danger ? 'color:var(--c-danger);' : 'color:var(--c-ink);'}">${esc(dateText)}</span>
